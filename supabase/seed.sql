@@ -1,0 +1,2 @@
+-- Local development seed (runs after migrations on `npx supabase db reset`).
+-- Intentionally empty: sign in through the app, create your lab, then add data.

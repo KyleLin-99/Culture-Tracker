@@ -1,0 +1,31 @@
+# Weekly database backup. Also counts as activity, so the free Supabase
+# project never pauses (it pauses after 7 idle days).
+#
+# Setup: GitHub repo > Settings > Secrets and variables > Actions > New secret
+#   SUPABASE_DB_URL = the "Session pooler" connection string from
+#   Supabase > Connect (includes your database password).
+name: Weekly DB backup
+
+on:
+  schedule:
+    - cron: "17 7 * * 1" # Mondays 07:17 UTC
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir -p backup
+          docker run --rm -e DB_URL="$SUPABASE_DB_URL" -v "$PWD/backup:/backup" postgres:17 \
+            sh -c 'pg_dump "$DB_URL" --schema=public --schema=auth --no-owner --no-privileges -Fc -f /backup/culture-tracker.dump'
+          ls -lh backup
+      - name: Keep the dump for 90 days
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_number }}
+          path: backup/culture-tracker.dump
+          retention-days: 90
