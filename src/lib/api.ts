@@ -99,12 +99,18 @@ export async function createTransfers(args: {
   );
 }
 
-export async function createBackup(parentId: string, medium: Medium, madeOn?: string): Promise<Item> {
+export async function createBackups(args: {
+  parentId: string;
+  count: number;
+  medium: Medium;
+  madeOn?: string;
+}): Promise<Item[]> {
   return unwrap(
-    await supabase.rpc('create_backup', {
-      p_parent_id: parentId,
-      p_medium: medium,
-      p_made_on: madeOn ?? todayLocal(),
+    await supabase.rpc('create_backups', {
+      p_parent_id: args.parentId,
+      p_count: args.count,
+      p_medium: args.medium,
+      p_made_on: args.madeOn ?? todayLocal(),
     }),
   );
 }

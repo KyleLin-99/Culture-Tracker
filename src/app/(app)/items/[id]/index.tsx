@@ -4,11 +4,11 @@ import { Text, View } from 'react-native';
 
 import { useMembership } from '@/auth/AuthProvider';
 import { labelDate, MAX_CODE_LENGTH, MEDIUM_LABEL, roomLeft, STATUS_LABEL } from '@/domain/cultureCode';
-import type { ItemStatus, Medium } from '@/domain/types';
-import { addNote, createBackup, getItem, itemEvents, itemLineage, setItemStatus } from '@/lib/api';
+import type { Item, ItemStatus, Medium } from '@/domain/types';
+import { addNote, createBackups, getItem, itemEvents, itemLineage, setItemStatus } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
-import { Button, Card, Choices, ErrorText, Field, Muted, Screen, SectionTitle, StatusPill, styles } from '@/ui/components';
+import { Button, Card, Choices, ErrorText, Field, Muted, Screen, SectionTitle, StatusPill, Stepper, styles } from '@/ui/components';
 import { colors, font, space } from '@/ui/theme';
 import { TreeList } from '@/ui/TreeList';
 
@@ -30,18 +30,20 @@ export default function ItemDetail() {
 
   const [panel, setPanel] = useState<Panel>(null);
   const [backupMedium, setBackupMedium] = useState<Medium>('slant');
+  const [backupCount, setBackupCount] = useState(1);
+  const [newBackups, setNewBackups] = useState<Item[] | null>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const i = item.data;
 
-  async function run(action: () => Promise<unknown>, after?: () => void) {
+  async function run(action: () => Promise<unknown>, after?: () => void, keepPanel = false) {
     setBusy(true);
     setError(null);
     try {
       await action();
-      setPanel(null);
+      if (!keepPanel) setPanel(null);
       setText('');
       await Promise.all([item.reload(), lineage.reload(), events.reload()]);
       after?.();
@@ -55,6 +57,8 @@ export default function ItemDetail() {
   function open(p: Panel) {
     setError(null);
     setText('');
+    setNewBackups(null);
+    setBackupCount(1);
     setPanel(panel === p ? null : p);
   }
 
@@ -108,12 +112,40 @@ export default function ItemDetail() {
             onPress={() => router.push({ pathname: '/items/[id]/transfer', params: { id: i.id } })}
             disabled={room <= 0}
           />
-          <Button title="Make a backup" variant="secondary" onPress={() => open('backup')} />
+          <Button title="Make backups" variant="secondary" onPress={() => open('backup')} />
           {panel === 'backup' && (
             <Card>
-              <Choices<Medium> label="Backup on" value={backupMedium} onChange={setBackupMedium} options={BACKUP_MEDIA} />
-              <Muted>It will be labeled {i.code}(n).</Muted>
-              <Button title="Create backup" busy={busy} onPress={() => run(() => createBackup(i.id, backupMedium))} />
+              {newBackups ? (
+                <>
+                  <Muted>Write these labels:</Muted>
+                  {newBackups.map((b) => (
+                    <Text key={b.id} style={styles.codeSmall}>
+                      {b.code}
+                    </Text>
+                  ))}
+                  <Muted>
+                    {i.strains?.name} · {labelDate(newBackups[0].made_on)} · {newBackups[0].initials}
+                  </Muted>
+                  <Button title="Done" onPress={() => open(null)} />
+                </>
+              ) : (
+                <>
+                  <Stepper label="How many" value={backupCount} onChange={setBackupCount} min={1} max={100} />
+                  <Choices<Medium> label="Backup on" value={backupMedium} onChange={setBackupMedium} options={BACKUP_MEDIA} />
+                  <Muted>They will be labeled {i.code}(1), {i.code}(2)… continuing from any existing backups.</Muted>
+                  <Button
+                    title={backupCount === 1 ? 'Create backup' : `Create ${backupCount} backups`}
+                    busy={busy}
+                    onPress={() =>
+                      run(
+                        async () => setNewBackups(await createBackups({ parentId: i.id, count: backupCount, medium: backupMedium })),
+                        undefined,
+                        true,
+                      )
+                    }
+                  />
+                </>
+              )}
             </Card>
           )}
 

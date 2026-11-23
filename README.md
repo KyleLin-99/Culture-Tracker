@@ -126,7 +126,7 @@ npx supabase start
 npx supabase test db
 ```
 
-58 tests cover the code rules, the 20-character limit, backups and revivals,
+61 tests cover the code rules, the 20-character limit, backups and revivals,
 lineage queries, and that one lab can't read or write another's data.
 
 ## Next (Milestone 2)

@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(43);
+select plan(46);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: one user, signed in, with a lab account and two strains
@@ -119,6 +119,16 @@ select is(
   (select array_agg(code order by position) from public.create_transfers(tests.id('S-2A1(2)-1'), 1, 'agar')),
   array['S-2A1(2)-1A'], 'and alternate as usual');
 select is((select generation from public.items where id = tests.id('S-2A1(2)-1A')), 5, 'revival generations continue');
+
+select is(
+  (select array_agg(code order by backup_number) from public.create_backups(tests.id('S-3'), 3, 'slant')),
+  array['S-3(1)', 'S-3(2)', 'S-3(3)'], 'create_backups makes several numbered backups at once');
+select is(
+  (select array_agg(code order by backup_number) from public.create_backups(tests.id('S-3'), 2, 'lc')),
+  array['S-3(4)', 'S-3(5)'], 'a later batch continues the numbering');
+select is(
+  (select note from public.events where item_id = tests.id('S-3') and type = 'backed_up' and note like '3 ×%'),
+  '3 × slant backup: S-3(1) … S-3(3)', 'create_backups logs one event on the parent');
 
 -- ---------------------------------------------------------------------------
 -- 20-character limit
