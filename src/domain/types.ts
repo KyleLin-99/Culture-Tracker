@@ -54,6 +54,13 @@ export type Item = {
   created_at: string;
 };
 
+/** An item with the names of what it points at, for the culture screen. */
+export type ItemWithRefs = Item & {
+  media_batch_id: string | null;
+  strains: { name: string } | null;
+  media_batches: { code: string; sterilization_runs: { code: string } | null } | null;
+};
+
 /** Row shape of item_lineage() and strain_tree(). */
 export type TreeRow = {
   id: string;

@@ -5,7 +5,7 @@ Four layers. CI runs all of them on every pull request, every push to `main`, an
 | Layer | Command | Where tests live | What it protects |
 |---|---|---|---|
 | Types + lint | `npm run typecheck`, `npm run lint` | whole app | type errors, React hook mistakes |
-| Unit | `npm test` | `src/**/__tests__/*.test.ts` | app logic, e.g. culture-code helpers |
+| Unit | `npm test` | `src/**/__tests__/*.test.ts` | app logic: culture-code helpers, trace wording, offline sync and local queries (run on real SQLite via sql.js) |
 | Database | `npm run test:db` (needs Docker: `npx supabase start` first) | `supabase/tests/database/*.test.sql` | culture codes, 20-character limit, backups, lineage order, tenant isolation (RLS) |
 | Screens | `npm run test:e2e` | `e2e/*.spec.ts` | sign-in, home lookup, culture detail, transfer, batch backups |
 

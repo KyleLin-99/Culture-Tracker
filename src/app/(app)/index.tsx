@@ -10,6 +10,7 @@ import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Button, ErrorText, Muted, Screen, SectionTitle, styles } from '@/ui/components';
 import { ItemRow } from '@/ui/ItemRow';
+import { SyncSummary } from '@/ui/SyncIndicator';
 import { colors, font, space, TAP } from '@/ui/theme';
 
 // Home: type what's on the label to jump to it. Becomes "Scan" once QR labels exist.
@@ -120,6 +121,7 @@ export default function Home() {
         <Text style={styles.body}>
           {membership.accounts?.name} · {membership.initials}
         </Text>
+        <SyncSummary />
         <Button title="Sign out" variant="secondary" onPress={signOut} />
       </View>
     </Screen>

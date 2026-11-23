@@ -1,10 +1,12 @@
 // Every database call the screens make, in one place. Each throws on error.
-// Milestone 2 reroutes writes through the offline outbox; screens won't change.
+// On phones, reads come from the local copy once it's synced (src/offline), so
+// they work with no signal; writes go to Supabase, then refresh the copy.
 
 import { todayLocal } from '@/domain/cultureCode';
 import type {
   Item,
   ItemEvent,
+  ItemWithRefs,
   ItemStatus,
   LookupRow,
   MediaBatch,
@@ -17,6 +19,8 @@ import type {
   TreeRow,
 } from '@/domain/types';
 
+import { afterWrite, localReader } from '@/offline/engine';
+
 import { supabase } from './supabase';
 
 function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
@@ -27,40 +31,44 @@ function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
 // --- Accounts -------------------------------------------------------------
 
 export async function createAccount(name: string, initials: string): Promise<string> {
-  return unwrap(await supabase.rpc('create_account', { p_name: name, p_initials: initials }));
+  const out = unwrap<string>(await supabase.rpc('create_account', { p_name: name, p_initials: initials }));
+  await afterWrite();
+  return out;
 }
 
 // --- Strains --------------------------------------------------------------
 
 export async function listStrains(): Promise<Strain[]> {
+  const local = await localReader();
+  if (local) return local.listStrains();
   return unwrap(
     await supabase.from('strains').select('*').is('deleted_at', null).order('name'),
   );
 }
 
 export async function getStrain(id: string): Promise<Strain> {
+  const local = await localReader();
+  if (local) return local.getStrain(id);
   return unwrap(await supabase.from('strains').select('*').eq('id', id).single());
 }
 
 export async function createStrain(accountId: string, name: string, species: string): Promise<Strain> {
-  return unwrap(
+  const out = unwrap<Strain>(
     await supabase
       .from('strains')
       .insert({ account_id: accountId, name: name.trim(), species: species.trim() || null })
       .select()
       .single(),
   );
+  await afterWrite();
+  return out;
 }
 
 // --- Items ----------------------------------------------------------------
 
-export type ItemWithRefs = Item & {
-  media_batch_id: string | null;
-  strains: { name: string } | null;
-  media_batches: { code: string; sterilization_runs: { code: string } | null } | null;
-};
-
 export async function getItem(id: string): Promise<ItemWithRefs> {
+  const local = await localReader();
+  if (local) return local.getItem(id);
   return unwrap(
     await supabase
       .from('items')
@@ -71,6 +79,8 @@ export async function getItem(id: string): Promise<ItemWithRefs> {
 }
 
 export async function recentItems(limit = 15): Promise<(Item & { strains: { name: string } | null })[]> {
+  const local = await localReader();
+  if (local) return local.recentItems(limit);
   return unwrap(
     await supabase
       .from('items')
@@ -89,7 +99,7 @@ export async function createOrigin(args: {
   madeOn?: string;
   notes?: string;
 }): Promise<Item> {
-  return unwrap(
+  const out = unwrap<Item>(
     await supabase
       .from('items')
       .insert({
@@ -104,6 +114,8 @@ export async function createOrigin(args: {
       .select()
       .single(),
   );
+  await afterWrite();
+  return out;
 }
 
 export async function createTransfers(args: {
@@ -114,7 +126,7 @@ export async function createTransfers(args: {
   location?: string;
   mediaBatchId?: string | null;
 }): Promise<Item[]> {
-  return unwrap(
+  const out = unwrap<Item[]>(
     await supabase.rpc('create_transfers', {
       p_parent_id: args.parentId,
       p_count: args.count,
@@ -124,6 +136,8 @@ export async function createTransfers(args: {
       p_location: args.location?.trim() || null,
     }),
   );
+  await afterWrite();
+  return out;
 }
 
 export async function createBackups(args: {
@@ -132,7 +146,7 @@ export async function createBackups(args: {
   medium: Medium;
   madeOn?: string;
 }): Promise<Item[]> {
-  return unwrap(
+  const out = unwrap<Item[]>(
     await supabase.rpc('create_backups', {
       p_parent_id: args.parentId,
       p_count: args.count,
@@ -140,6 +154,8 @@ export async function createBackups(args: {
       p_made_on: args.madeOn ?? todayLocal(),
     }),
   );
+  await afterWrite();
+  return out;
 }
 
 export async function setItemStatus(
@@ -148,7 +164,7 @@ export async function setItemStatus(
   note?: string,
   contamType?: string,
 ): Promise<Item> {
-  return unwrap(
+  const out = unwrap<Item>(
     await supabase.rpc('set_item_status', {
       p_item_id: itemId,
       p_status: status,
@@ -156,15 +172,20 @@ export async function setItemStatus(
       p_contam_type: contamType?.trim() || null,
     }),
   );
+  await afterWrite();
+  return out;
 }
 
 export async function addNote(accountId: string, itemId: string, note: string): Promise<void> {
   unwrap(
     await supabase.from('events').insert({ account_id: accountId, item_id: itemId, type: 'note', note: note.trim() }),
   );
+  await afterWrite();
 }
 
 export async function itemEvents(itemId: string): Promise<ItemEvent[]> {
+  const local = await localReader();
+  if (local) return local.itemEvents(itemId);
   return unwrap(
     await supabase
       .from('events')
@@ -178,20 +199,28 @@ export async function itemEvents(itemId: string): Promise<ItemEvent[]> {
 // --- Lookup and lineage ---------------------------------------------------
 
 export async function lookupCode(query: string): Promise<LookupRow[]> {
+  const local = await localReader();
+  if (local) return local.lookupCode(query);
   return unwrap(await supabase.rpc('lookup_code', { p_query: query }));
 }
 
 export async function itemLineage(itemId: string, direction: 'up' | 'down' | 'both' = 'both'): Promise<TreeRow[]> {
+  const local = await localReader();
+  if (local) return local.itemLineage(itemId, direction);
   return unwrap(await supabase.rpc('item_lineage', { p_item_id: itemId, p_direction: direction }));
 }
 
 export async function strainTree(strainId: string): Promise<TreeRow[]> {
+  const local = await localReader();
+  if (local) return local.strainTree(strainId);
   return unwrap(await supabase.rpc('strain_tree', { p_strain_id: strainId }));
 }
 
 // --- Sterilization runs and media batches --------------------------------
 
 export async function listRuns(limit = 30): Promise<SterilizationRun[]> {
+  const local = await localReader();
+  if (local) return local.listRuns(limit);
   return unwrap(
     await supabase
       .from('sterilization_runs')
@@ -211,7 +240,7 @@ export async function createRun(args: {
   runOn?: string;
   notes?: string;
 }): Promise<SterilizationRun> {
-  return unwrap(
+  const out = unwrap<SterilizationRun>(
     await supabase
       .from('sterilization_runs')
       .insert({
@@ -225,9 +254,13 @@ export async function createRun(args: {
       .select()
       .single(),
   );
+  await afterWrite();
+  return out;
 }
 
 export async function listBatches(kind?: MediaKind | null, limit = 30): Promise<MediaBatch[]> {
+  const local = await localReader();
+  if (local) return local.listBatches(kind, limit);
   let q = supabase
     .from('media_batches')
     .select('*, sterilization_runs(code)')
@@ -246,7 +279,7 @@ export async function createBatch(args: {
   runId?: string | null;
   madeOn?: string;
 }): Promise<MediaBatch> {
-  return unwrap(
+  const out = unwrap<MediaBatch>(
     await supabase
       .from('media_batches')
       .insert({
@@ -259,6 +292,8 @@ export async function createBatch(args: {
       .select('*, sterilization_runs(code)')
       .single(),
   );
+  await afterWrite();
+  return out;
 }
 
 // --- Contamination trace ---------------------------------------------------

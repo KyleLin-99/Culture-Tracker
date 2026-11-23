@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 
 import type { Membership } from '@/domain/types';
 import { supabase } from '@/lib/supabase';
+import { clearLocalCopy } from '@/offline/engine';
 
 type AuthState = {
   /** True until the stored session and membership have been checked. */
@@ -75,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     reloadMembership: () => loadMembership(session),
     signOut: async () => {
       await supabase.auth.signOut();
+      await clearLocalCopy(); // the lab's records don't stay on a signed-out phone
     },
   };
 
