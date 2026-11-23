@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(42);
+select plan(43);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: one user, signed in, with a lab account and two strains
@@ -187,6 +187,12 @@ select is(
 select is(
   (select count(*)::int from public.item_lineage(tests.id('S-2A1'), 'down') where depth > 0),
   7, 'item_lineage walks down through transfers, backups and revivals');
+
+select is(
+  (select array_agg(code) from public.item_lineage(tests.id('S-2'), 'both')),
+  array['S', 'S-2', 'S-2A', 'S-2A1', 'S-2A1A', 'S-2A1B', 'S-2A1(1)', 'S-2A1(2)',
+        'S-2A1(2)-1', 'S-2A1(2)-1A', 'S-2A1(2)-2', 'S-2B', 'S-2C'],
+  'item_lineage lists ancestors first, then each child directly under its parent');
 
 -- S2 gets 10 plates so ordering by number (not text) is visible: S2-9 before S2-10.
 do $$ begin perform public.create_transfers(tests.id('S2'), 10, 'agar'); end $$;

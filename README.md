@@ -43,7 +43,7 @@ database tests locally).
    ```powershell
    npx supabase login
    npx supabase link --project-ref YOUR-PROJECT-REF
-   npx supabase db push
+   npx supabase db push --remote
    ```
 
 4. **Set up sign-in emails.** The app signs in with an emailed code, not a link.
@@ -126,7 +126,7 @@ npx supabase start
 npx supabase test db
 ```
 
-57 tests cover the code rules, the 20-character limit, backups and revivals,
+58 tests cover the code rules, the 20-character limit, backups and revivals,
 lineage queries, and that one lab can't read or write another's data.
 
 ## Next (Milestone 2)
