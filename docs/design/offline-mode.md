@@ -1,6 +1,6 @@
 # Design: offline mode (Milestone 2)
 
-Status: **step 1 built** (offline reading, `feat/offline-reads`). Decisions: see [Decisions](#decisions).
+Status: **built**: offline reading (PR #10) and offline writing (`feat/offline-writes`). Decisions: see [Decisions](#decisions).
 
 ## Goal
 
@@ -47,9 +47,9 @@ The server's rules stay in charge in every case: the database still validates co
 
 1. ✅ Local schema + migrations in `src/offline/schema.ts` (mirrors the Supabase tables the app reads).
 2. ✅ Pull sync (read-only offline): `src/offline/sync.ts`, `engine.ts`; screens read from SQLite through `src/lib/api.ts`.
-3. Outbox + push for transfers, backups, status changes, notes; then strains, origins, batches, runs.
-4. Conflict handling per the decision above, with a "Relabel" list.
-5. Sync status banner.
+3. ✅ Outbox + push for transfers, backups, origins, status changes, notes and strains (`src/offline/outbox.ts`, `writer.ts`). Media batches and sterilization runs stay online-only for now.
+4. ✅ Conflict handling per the decision above, with a "Relabel these plates" list (`apply_items` + `relabels` on the server).
+5. ✅ Sync status: header badge, home-screen summary with changes waiting.
 
 ## Tests
 
@@ -71,3 +71,12 @@ Sharing a lab with other people (roles: owner, tech, viewer) comes after this. S
 - **Status:** an "Offline" badge in the header; a "Synced 4 min ago · works offline" line on the home screen.
 - **Sign-out** removes the lab from the phone; a different lab signing in starts a fresh copy.
 - **Tests:** `src/offline/__tests__/` run the real sync and queries against SQLite (sql.js) and check the local lineage and tree order match the server functions.
+
+## What step 2 does (built)
+
+- **Saving on the phone:** transfers, backups, new origins, status changes, notes and new strains are applied to the local copy at once and queued in an `outbox` table. Codes are planned locally (`src/offline/planner.ts`) with the same rules as the database, including the 20-character limit.
+- **Sending:** each sync sends the queue in order before pulling. Every change carries ids made on the phone, and the server functions (`apply_items`, `apply_status`, `apply_event`) ignore a change they've already applied, so a retry after a dropped connection never duplicates anything. Pulls never overwrite a change still waiting to be sent.
+- **Conflicts:** if another device already used a position, `apply_items` takes the next free one and writes a `relabels` row (old code → new code). Children follow their renumbered parent. The home screen lists them under **Relabel these plates** until you tap Done (on phone or web).
+- **Refusals:** if the server rejects a change, it's undone on the phone along with any queued change that builds on it, and listed under **Couldn't save** with the reason until dismissed.
+- **Online:** the same path runs, then syncs at once, so the screen shows the server's final codes.
+- **Tests:** 18 pgTAP tests for the server functions (idempotency, renumbering, cascading relabels, isolation); 11 Jest tests run the whole flow on SQLite against a fake server with the same rules (offline queueing, ordered sending, half-sent retries, conflicts, cascading rollback).

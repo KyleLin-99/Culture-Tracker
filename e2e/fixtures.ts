@@ -79,6 +79,8 @@ export type Lab = {
   items: Row[];
   runs: Record<string, unknown>[];
   batches: Record<string, unknown>[];
+  /** Plates to relabel after an offline code conflict. */
+  relabels: Record<string, unknown>[];
   /** Every insert the app made: table and request body. */
   inserts: { table: string; body: Record<string, unknown> }[];
   /** Every RPC call the app made: function name and request body. */
@@ -109,6 +111,16 @@ async function mockSupabase(page: Page, lab: Lab) {
       return json([...lab.items].reverse());
     }
     if (path.startsWith('/rest/v1/events')) return json([]);
+    if (path.startsWith('/rest/v1/relabels')) {
+      if (req.method() === 'PATCH') {
+        const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+        const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
+        lab.inserts.push({ table: 'relabels:update', body: { id, ...body } });
+        lab.relabels = lab.relabels.filter((r) => r.id !== id);
+        return json([]);
+      }
+      return json(lab.relabels);
+    }
 
     // Sterilization runs and media batches: list, and insert with an automatic code.
     for (const [table, rows, prefix] of [
@@ -174,7 +186,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

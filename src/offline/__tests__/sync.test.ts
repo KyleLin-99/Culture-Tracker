@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 
 import { localQueries } from '../queries';
-import { getMeta, migrate } from '../schema';
+import { getMeta, migrate, SCHEMA_VERSION } from '../schema';
 import type { SqlDb } from '../sql';
 import { OVERLAP_MS, pull } from '../sync';
 import { ACCOUNT, builder, emptyLab, fakeRemote, standardLab, STRAIN, tick } from '../testing/fakeLab';
@@ -134,6 +134,6 @@ describe('later pulls', () => {
 describe('schema', () => {
   it('migrates once and is safe to run again', async () => {
     await migrate(db);
-    expect((await db.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(1);
+    expect((await db.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(SCHEMA_VERSION);
   });
 });

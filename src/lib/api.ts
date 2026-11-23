@@ -1,6 +1,8 @@
 // Every database call the screens make, in one place. Each throws on error.
-// On phones, reads come from the local copy once it's synced (src/offline), so
-// they work with no signal; writes go to Supabase, then refresh the copy.
+// On phones, once the local copy is synced (src/offline), reads come from it and
+// culture changes are made on the phone and queued for the server, so both work
+// with no signal. The web, and lab setup (account, batches, runs), talk to
+// Supabase directly.
 
 import { todayLocal } from '@/domain/cultureCode';
 import type {
@@ -19,7 +21,16 @@ import type {
   TreeRow,
 } from '@/domain/types';
 
-import { afterWrite, localReader } from '@/offline/engine';
+import {
+  afterWrite,
+  dismissFailedChange as dismissFailed,
+  listFailedChanges as failedOnPhone,
+  localReader,
+  localWriter,
+  syncNow,
+} from '@/offline/engine';
+import type { FailedChange } from '@/offline/outbox';
+import type { Relabel } from '@/offline/queries';
 
 import { supabase } from './supabase';
 
@@ -53,6 +64,12 @@ export async function getStrain(id: string): Promise<Strain> {
 }
 
 export async function createStrain(accountId: string, name: string, species: string): Promise<Strain> {
+  const w = await localWriter();
+  if (w) {
+    const strain = await w.createStrain(accountId, name, species);
+    await syncNow();
+    return (await localReader())!.getStrain(strain.id);
+  }
   const out = unwrap<Strain>(
     await supabase
       .from('strains')
@@ -99,6 +116,12 @@ export async function createOrigin(args: {
   madeOn?: string;
   notes?: string;
 }): Promise<Item> {
+  const w = await localWriter();
+  if (w) {
+    const { ids } = await w.createOrigin({ ...args, madeOn: args.madeOn ?? todayLocal() });
+    await syncNow(); // online: the server's final code; offline: the phone's
+    return (await w.readItems(ids))[0];
+  }
   const out = unwrap<Item>(
     await supabase
       .from('items')
@@ -126,6 +149,12 @@ export async function createTransfers(args: {
   location?: string;
   mediaBatchId?: string | null;
 }): Promise<Item[]> {
+  const w = await localWriter();
+  if (w) {
+    const { ids } = await w.createTransfers({ ...args, madeOn: args.madeOn ?? todayLocal() });
+    await syncNow();
+    return w.readItems(ids);
+  }
   const out = unwrap<Item[]>(
     await supabase.rpc('create_transfers', {
       p_parent_id: args.parentId,
@@ -146,6 +175,12 @@ export async function createBackups(args: {
   medium: Medium;
   madeOn?: string;
 }): Promise<Item[]> {
+  const w = await localWriter();
+  if (w) {
+    const { ids } = await w.createBackups({ ...args, madeOn: args.madeOn ?? todayLocal() });
+    await syncNow();
+    return w.readItems(ids);
+  }
   const out = unwrap<Item[]>(
     await supabase.rpc('create_backups', {
       p_parent_id: args.parentId,
@@ -164,6 +199,12 @@ export async function setItemStatus(
   note?: string,
   contamType?: string,
 ): Promise<Item> {
+  const w = await localWriter();
+  if (w) {
+    await w.setItemStatus(itemId, status, note, contamType);
+    await syncNow();
+    return (await w.readItems([itemId]))[0];
+  }
   const out = unwrap<Item>(
     await supabase.rpc('set_item_status', {
       p_item_id: itemId,
@@ -177,6 +218,12 @@ export async function setItemStatus(
 }
 
 export async function addNote(accountId: string, itemId: string, note: string): Promise<void> {
+  const w = await localWriter();
+  if (w) {
+    await w.addNote(accountId, itemId, note);
+    await syncNow();
+    return;
+  }
   unwrap(
     await supabase.from('events').insert({ account_id: accountId, item_id: itemId, type: 'note', note: note.trim() }),
   );
@@ -300,4 +347,41 @@ export async function createBatch(args: {
 
 export async function contaminationTrace(fromDate: string, toDate: string = todayLocal()): Promise<TraceRow[]> {
   return unwrap(await supabase.rpc('contamination_trace', { p_from: fromDate, p_to: toDate }));
+}
+
+// --- Offline: relabels and refused changes ----------------------------------
+
+export type { FailedChange, Relabel };
+
+/** Plates the server renumbered after a code conflict, to relabel. */
+export async function listRelabels(): Promise<Relabel[]> {
+  const local = await localReader();
+  if (local) return local.openRelabels();
+  return unwrap(
+    await supabase
+      .from('relabels')
+      .select('id, entity_id, old_code, new_code, created_at')
+      .is('resolved_at', null)
+      .is('deleted_at', null)
+      .order('created_at'),
+  );
+}
+
+export async function resolveRelabel(id: string): Promise<void> {
+  const w = await localWriter();
+  if (w) {
+    await w.resolveRelabel(id);
+    await syncNow();
+    return;
+  }
+  unwrap(await supabase.from('relabels').update({ resolved_at: new Date().toISOString() }).eq('id', id));
+}
+
+/** Changes made on this phone that the server refused. Always empty on web. */
+export function listFailedChanges(): Promise<FailedChange[]> {
+  return failedOnPhone();
+}
+
+export function dismissFailedChange(seq: number): Promise<void> {
+  return dismissFailed(seq);
 }

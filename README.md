@@ -86,9 +86,10 @@ database tests locally).
    ones don't (parent, media batch, sterilization run, day made), with relative
    risk and a Fisher's exact p value.
 7. **Offline on your phone**: the app keeps a copy of your lab (a year of
-   history plus everything active) and syncs it in the background, so lookups,
-   culture screens and lineage work with no signal. Saving changes still needs
-   a connection; offline saving is next.
+   history plus everything active) and syncs it in the background. Lookups,
+   lineage, transfers, backups, status changes and notes all work with no
+   signal and sync when you're back online. If another device used a code
+   first, the home screen asks you to relabel the plate (S-2C → S-2D).
 
 ## Project layout
 
@@ -123,14 +124,15 @@ supabase/
   change. Status, location, notes and aliases can.
 - **Functions** (called with `supabase.rpc`): `create_account`,
   `create_transfers`, `create_backup`, `set_item_status`, `lookup_code`,
-  `item_lineage`, `strain_tree`, `create_backups`, `contamination_trace`.
+  `item_lineage`, `strain_tree`, `create_backups`, `contamination_trace`,
+  and for offline phones `apply_items`, `apply_status`, `apply_event`.
 
 ### Tests
 
 | Command | What it runs |
 |---|---|
 | `npm run check` | types, lint, unit tests (run before every push) |
-| `npm run test:db` | 81 pgTAP database tests (needs Docker Desktop and `npx supabase start`) |
+| `npm run test:db` | 99 pgTAP database tests (needs Docker Desktop and `npx supabase start`) |
 | `npm run test:e2e` | web build + Playwright screen tests against a mocked backend |
 
 GitHub Actions runs all of them on every pull request, every push to `main` and

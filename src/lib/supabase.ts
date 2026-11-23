@@ -34,7 +34,7 @@ if (Platform.OS !== 'web') {
 export function errorMessage(error: unknown): string {
   const raw = error && typeof error === 'object' && 'message' in error ? String((error as { message: unknown }).message) : '';
   if (/network request failed|failed to fetch|fetch failed|network error|load failed/i.test(raw)) {
-    return 'No connection. Looking things up works offline on your phone; saving changes needs a connection for now.';
+    return 'No connection. On your phone, changes save offline once your lab has synced once; on the web, try again when you are back online.';
   }
   if (error && typeof error === 'object' && 'message' in error) {
     return String((error as { message: unknown }).message);

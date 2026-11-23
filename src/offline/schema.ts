@@ -4,7 +4,7 @@ import type { SqlDb } from './sql';
 // minus server-only rules: the server stays the source of truth.
 // Bump SCHEMA_VERSION and add a step to MIGRATIONS for any change.
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -43,6 +43,28 @@ const MIGRATIONS: Record<number, string> = {
     -- account_id: whose lab this copy is. pulled_until_<table>: newest updated_at seen.
     create table meta (key text primary key, value text);
   `,
+  // Offline writing: rows made on the phone and not yet confirmed by the server
+  // carry local_pending = 1; the outbox holds the changes to send, in order.
+  2: `
+    alter table strains add column local_pending integer not null default 0;
+    alter table items add column local_pending integer not null default 0;
+    alter table events add column local_pending integer not null default 0;
+    create table relabels (
+      id text primary key, account_id text not null, entity text not null, entity_id text not null,
+      old_code text not null, new_code text not null, resolved_at text,
+      created_at text, updated_at text not null, deleted_at text,
+      local_pending integer not null default 0
+    );
+    create table outbox (
+      seq integer primary key autoincrement,
+      op text not null,
+      payload text not null,
+      created_at text not null,
+      status text not null default 'pending',  -- pending | failed
+      error text,
+      attempts integer not null default 0
+    );
+  `,
 };
 
 /** Creates or upgrades the local tables. Safe to call on every app start. */
@@ -70,6 +92,8 @@ export async function setMeta(db: SqlDb, key: string, value: string | null): Pro
 /** Empties the local copy (sign-out, or a different lab). */
 export async function clearAll(db: SqlDb): Promise<void> {
   await db.transaction(async () => {
-    await db.exec('delete from events; delete from items; delete from media_batches; delete from sterilization_runs; delete from strains; delete from meta;');
+    await db.exec(
+      'delete from outbox; delete from relabels; delete from events; delete from items; delete from media_batches; delete from sterilization_runs; delete from strains; delete from meta;',
+    );
   });
 }

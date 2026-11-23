@@ -7,13 +7,13 @@ import { SyncIndicator } from '@/ui/SyncIndicator';
 import { colors } from '@/ui/theme';
 
 export default function AppLayout() {
-  const { account_id } = useMembership();
+  const { account_id, initials } = useMembership();
 
   // Phones keep a local copy of the lab in sync while signed in (no-op on web).
   useEffect(() => {
     let stop: (() => void) | undefined;
     let cancelled = false;
-    void startSync(account_id).then((s) => {
+    void startSync(account_id, initials).then((s) => {
       if (cancelled) s();
       else stop = s;
     });
@@ -21,7 +21,7 @@ export default function AppLayout() {
       cancelled = true;
       stop?.();
     };
-  }, [account_id]);
+  }, [account_id, initials]);
 
   return (
     <Stack

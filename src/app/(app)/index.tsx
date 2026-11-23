@@ -10,6 +10,7 @@ import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Button, ErrorText, Muted, Screen, SectionTitle, styles } from '@/ui/components';
 import { ItemRow } from '@/ui/ItemRow';
+import { PendingWork } from '@/ui/PendingWork';
 import { SyncSummary } from '@/ui/SyncIndicator';
 import { colors, font, space, TAP } from '@/ui/theme';
 
@@ -91,6 +92,7 @@ export default function Home() {
         </View>
       ) : (
         <>
+          <PendingWork />
           <Button title="Strains and new origins" variant="secondary" onPress={() => router.push('/strains')} />
           <Button title="Batches and runs" variant="secondary" onPress={() => router.push('/batches')} />
           <Button title="Contamination trace" variant="secondary" onPress={() => router.push('/trace')} />
