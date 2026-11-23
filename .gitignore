@@ -44,3 +44,8 @@ yarn-error.*
 .env
 supabase/.branches
 supabase/.temp
+
+# Test output
+dist-e2e/
+playwright-report/
+test-results/

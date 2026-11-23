@@ -24,9 +24,9 @@ const BACKUP_MEDIA: { value: Medium; label: string }[] = [
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { account_id } = useMembership();
-  const item = useData(() => getItem(id), [id]);
-  const lineage = useData(() => itemLineage(id, 'both'), [id]);
-  const events = useData(() => itemEvents(id), [id]);
+  const item = useData(() => getItem(id), id);
+  const lineage = useData(() => itemLineage(id, 'both'), id);
+  const events = useData(() => itemEvents(id), id);
 
   const [panel, setPanel] = useState<Panel>(null);
   const [backupMedium, setBackupMedium] = useState<Medium>('slant');

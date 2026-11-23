@@ -1,18 +1,23 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { errorMessage } from './supabase';
 
 /**
- * Loads data when the screen gains focus (so going back shows fresh data).
+ * Loads data when the screen gains focus (so going back shows fresh data),
+ * and again whenever `key` changes (e.g. the item id in the URL).
  * Milestone 2 replaces these network reads with reads from the local database.
  */
-export function useData<T>(load: () => Promise<T>, deps: unknown[]) {
+export function useData<T>(load: () => Promise<T>, key = '') {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Always call the latest `load` without re-subscribing on every render.
   const loadRef = useRef(load);
-  loadRef.current = load;
+  useEffect(() => {
+    loadRef.current = load;
+  });
 
   const reload = useCallback(async () => {
     try {
@@ -28,8 +33,9 @@ export function useData<T>(load: () => Promise<T>, deps: unknown[]) {
   useFocusEffect(
     useCallback(() => {
       void reload();
+      // `key` isn't read here on purpose: listing it re-runs the load when it changes.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [reload, ...deps]),
+    }, [reload, key]),
   );
 
   return { data, error, loading, reload };

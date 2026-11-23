@@ -1,0 +1,32 @@
+# Weekly dependency update PRs; CI tests each one before you merge it.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      dev-tools:
+        dependency-type: development
+      app:
+        dependency-type: production
+    # Expo pins exact versions of React, React Native and its own modules per SDK.
+    # Upgrade those together, deliberately, with:  npx expo install --fix
+    ignore:
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "jest-expo"
+      - dependency-name: "eslint-config-expo"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-*"
+      - dependency-name: "@react-native-async-storage/*"
+      - dependency-name: "@types/react"
+      - dependency-name: "@expo/*"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

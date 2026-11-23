@@ -19,15 +19,13 @@ export default function Home() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LookupRow[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const recent = useData(() => recentItems(), []);
+  const recent = useData(() => recentItems());
 
   // Search as you type, after a short pause.
+  const q = normalizeCode(query);
+
   useEffect(() => {
-    const q = normalizeCode(query);
-    if (!q) {
-      setResults(null);
-      return;
-    }
+    if (!q) return;
     const t = setTimeout(async () => {
       try {
         setSearchError(null);
@@ -37,7 +35,7 @@ export default function Home() {
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [q]);
 
   function openFirstExact() {
     const exact = results?.filter((r) => r.exact) ?? [];
@@ -70,7 +68,8 @@ export default function Home() {
       />
       <ErrorText>{searchError}</ErrorText>
 
-      {results !== null ? (
+      {/* Showing search results only while there's a query keeps stale results hidden. */}
+      {q && results !== null ? (
         <View style={{ gap: space.sm }}>
           {results.length === 0 ? (
             <Muted>No culture with that code.</Muted>

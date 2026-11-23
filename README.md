@@ -67,10 +67,9 @@ database tests locally).
 
 7. **Optional: weekly backups.** Push to GitHub, then add a repository secret
    `SUPABASE_DB_URL` with the *Session pooler* connection string from
-   **Supabase → Connect**. Then move `ci/db-backup.yml` to
-   `.github/workflows/db-backup.yml` (I couldn't write into `.github` from here).
-   It dumps the database every Monday, which also keeps the free project from
-   pausing.
+   **Supabase → Connect**. The backup workflow (put in place by `ci\install.ps1`)
+   dumps the database every Monday, which also keeps the free
+   project from pausing.
 
 ## Using it
 
@@ -119,15 +118,15 @@ supabase/
 
 ### Tests
 
-With Docker Desktop running:
+| Command | What it runs |
+|---|---|
+| `npm run check` | types, lint, unit tests (run before every push) |
+| `npm run test:db` | 61 pgTAP database tests (needs Docker Desktop and `npx supabase start`) |
+| `npm run test:e2e` | web build + Playwright screen tests against a mocked backend |
 
-```powershell
-npx supabase start
-npx supabase test db
-```
-
-61 tests cover the code rules, the 20-character limit, backups and revivals,
-lineage queries, and that one lab can't read or write another's data.
+GitHub Actions runs all of them on every pull request, every push to `main` and
+daily. See `docs/TESTING.md` for which layer a new test belongs in, and
+`CONTRIBUTING.md` for the branch and PR workflow.
 
 ## Next (Milestone 2)
 

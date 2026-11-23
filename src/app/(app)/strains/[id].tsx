@@ -24,8 +24,8 @@ const SOURCE_MEDIA: { value: Medium; label: string }[] = [
 export default function StrainDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { account_id } = useMembership();
-  const strain = useData(() => getStrain(id), [id]);
-  const tree = useData(() => strainTree(id), [id]);
+  const strain = useData(() => getStrain(id), id);
+  const tree = useData(() => strainTree(id), id);
 
   const [choice, setChoice] = useState<OriginChoice>('S');
   const [sourceInitials, setSourceInitials] = useState('');

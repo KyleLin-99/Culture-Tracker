@@ -11,7 +11,7 @@ import { colors, font, space } from '@/ui/theme';
 
 export default function Strains() {
   const { account_id } = useMembership();
-  const strains = useData(listStrains, []);
+  const strains = useData(listStrains);
   const [name, setName] = useState('');
   const [species, setSpecies] = useState('');
   const [busy, setBusy] = useState(false);

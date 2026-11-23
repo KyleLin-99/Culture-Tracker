@@ -21,6 +21,7 @@ export function TreeList({ rows, highlightId }: { rows: TreeRow[]; highlightId?:
         return (
           <Pressable
             key={r.id}
+            testID={`tree-row-${r.code}`}
             onPress={() => router.push({ pathname: '/items/[id]', params: { id: r.id } })}
             style={({ pressed }) => ({
               minHeight: 52,
