@@ -14,7 +14,7 @@ import { colors, space } from '@/ui/theme';
 // the labels to write.
 export default function Transfer() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const parent = useData(() => getItem(id), [id]);
+  const parent = useData(() => getItem(id), id);
   const [count, setCount] = useState(1);
   const [medium, setMedium] = useState<Medium>('agar');
   const [location, setLocation] = useState('');
