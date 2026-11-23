@@ -2,7 +2,20 @@
 // Milestone 2 reroutes writes through the offline outbox; screens won't change.
 
 import { todayLocal } from '@/domain/cultureCode';
-import type { Item, ItemEvent, ItemStatus, LookupRow, Medium, Strain, TreeRow } from '@/domain/types';
+import type {
+  Item,
+  ItemEvent,
+  ItemStatus,
+  LookupRow,
+  MediaBatch,
+  MediaKind,
+  Medium,
+  Strain,
+  SterilizationMethod,
+  SterilizationRun,
+  TraceRow,
+  TreeRow,
+} from '@/domain/types';
 
 import { supabase } from './supabase';
 
@@ -41,8 +54,20 @@ export async function createStrain(accountId: string, name: string, species: str
 
 // --- Items ----------------------------------------------------------------
 
-export async function getItem(id: string): Promise<Item & { strains: { name: string } | null }> {
-  return unwrap(await supabase.from('items').select('*, strains(name)').eq('id', id).single());
+export type ItemWithRefs = Item & {
+  media_batch_id: string | null;
+  strains: { name: string } | null;
+  media_batches: { code: string; sterilization_runs: { code: string } | null } | null;
+};
+
+export async function getItem(id: string): Promise<ItemWithRefs> {
+  return unwrap(
+    await supabase
+      .from('items')
+      .select('*, strains(name), media_batches(code, sterilization_runs(code))')
+      .eq('id', id)
+      .single(),
+  );
 }
 
 export async function recentItems(limit = 15): Promise<(Item & { strains: { name: string } | null })[]> {
@@ -87,6 +112,7 @@ export async function createTransfers(args: {
   medium: Medium;
   madeOn?: string;
   location?: string;
+  mediaBatchId?: string | null;
 }): Promise<Item[]> {
   return unwrap(
     await supabase.rpc('create_transfers', {
@@ -94,6 +120,7 @@ export async function createTransfers(args: {
       p_count: args.count,
       p_medium: args.medium,
       p_made_on: args.madeOn ?? todayLocal(),
+      p_media_batch_id: args.mediaBatchId ?? null,
       p_location: args.location?.trim() || null,
     }),
   );
@@ -160,4 +187,82 @@ export async function itemLineage(itemId: string, direction: 'up' | 'down' | 'bo
 
 export async function strainTree(strainId: string): Promise<TreeRow[]> {
   return unwrap(await supabase.rpc('strain_tree', { p_strain_id: strainId }));
+}
+
+// --- Sterilization runs and media batches --------------------------------
+
+export async function listRuns(limit = 30): Promise<SterilizationRun[]> {
+  return unwrap(
+    await supabase
+      .from('sterilization_runs')
+      .select('*')
+      .is('deleted_at', null)
+      .order('run_on', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit),
+  );
+}
+
+export async function createRun(args: {
+  accountId: string;
+  method: SterilizationMethod;
+  psi?: number | null;
+  minutes?: number | null;
+  runOn?: string;
+  notes?: string;
+}): Promise<SterilizationRun> {
+  return unwrap(
+    await supabase
+      .from('sterilization_runs')
+      .insert({
+        account_id: args.accountId,
+        method: args.method,
+        psi: args.psi ?? null,
+        minutes: args.minutes ?? null,
+        run_on: args.runOn ?? todayLocal(),
+        notes: args.notes?.trim() || null,
+      })
+      .select()
+      .single(),
+  );
+}
+
+export async function listBatches(kind?: MediaKind | null, limit = 30): Promise<MediaBatch[]> {
+  let q = supabase
+    .from('media_batches')
+    .select('*, sterilization_runs(code)')
+    .is('deleted_at', null)
+    .order('made_on', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (kind) q = q.eq('kind', kind);
+  return unwrap(await q);
+}
+
+export async function createBatch(args: {
+  accountId: string;
+  kind: MediaKind;
+  recipe?: string;
+  runId?: string | null;
+  madeOn?: string;
+}): Promise<MediaBatch> {
+  return unwrap(
+    await supabase
+      .from('media_batches')
+      .insert({
+        account_id: args.accountId,
+        kind: args.kind,
+        recipe: args.recipe?.trim() || null,
+        sterilization_run_id: args.runId ?? null,
+        made_on: args.madeOn ?? todayLocal(),
+      })
+      .select('*, sterilization_runs(code)')
+      .single(),
+  );
+}
+
+// --- Contamination trace ---------------------------------------------------
+
+export async function contaminationTrace(fromDate: string, toDate: string = todayLocal()): Promise<TraceRow[]> {
+  return unwrap(await supabase.rpc('contamination_trace', { p_from: fromDate, p_to: toDate }));
 }

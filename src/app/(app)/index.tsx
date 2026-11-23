@@ -91,6 +91,8 @@ export default function Home() {
       ) : (
         <>
           <Button title="Strains and new origins" variant="secondary" onPress={() => router.push('/strains')} />
+          <Button title="Batches and runs" variant="secondary" onPress={() => router.push('/batches')} />
+          <Button title="Contamination trace" variant="secondary" onPress={() => router.push('/trace')} />
 
           <SectionTitle>Recent</SectionTitle>
           <ErrorText>{recent.error}</ErrorText>

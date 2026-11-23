@@ -5,6 +5,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  daysAgoLocal,
   labelDate,
   MAX_CODE_LENGTH,
   normalizeCode,
@@ -68,5 +69,13 @@ describe('labelDate', () => {
   it('formats an ISO date the way it goes on a label', () => {
     expect(labelDate('2026-11-16')).toBe('11/16/26');
     expect(labelDate('2027-01-05')).toBe('1/5/27');
+  });
+});
+
+describe('daysAgoLocal', () => {
+  it('counts back in local days, across month and year ends', () => {
+    expect(daysAgoLocal(0, new Date(2026, 10, 23, 23, 30))).toBe('2026-11-23');
+    expect(daysAgoLocal(30, new Date(2026, 10, 23))).toBe('2026-10-24');
+    expect(daysAgoLocal(1, new Date(2027, 0, 1, 0, 15))).toBe('2026-12-31');
   });
 });

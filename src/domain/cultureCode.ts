@@ -79,6 +79,13 @@ export function todayLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** The local date `days` days ago, YYYY-MM-DD. */
+export function daysAgoLocal(days: number, from: Date = new Date()): string {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() - days);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** 2026-11-16 -> 11/16/26, the way it goes on a label. */
 export function labelDate(isoDate: string): string {
   const [y, m, d] = isoDate.split('-');

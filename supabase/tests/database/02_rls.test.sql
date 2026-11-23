@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(15);
+select plan(18);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'a@example.com'),
@@ -79,6 +79,19 @@ select throws_ok(
 select tests.sign_in('00000000-0000-0000-0000-00000000000a');
 select is((select status from public.items where id = '30000000-0000-0000-0000-00000000000a'), 'active',
   'B''s update of A''s item had no effect');
+
+-- Lab records: A's sterilization run, as A.
+select tests.sign_in('00000000-0000-0000-0000-00000000000a');
+insert into public.sterilization_runs (id, account_id, method)
+select '40000000-0000-0000-0000-00000000000a', account_id, 'pressure_cooker' from public.members;
+select tests.sign_in('00000000-0000-0000-0000-00000000000b');
+
+select is((select count(*)::int from public.sterilization_runs), 0, 'B can''t see A''s sterilization runs');
+select throws_ok(
+  $$ insert into public.media_batches (account_id, kind, sterilization_run_id)
+     select account_id, 'agar', '40000000-0000-0000-0000-00000000000a' from public.members $$,
+  '23503', null, 'B can''t put a media batch on A''s sterilization run');
+select is((select count(*)::int from public.contamination_trace()), 0, 'the trace never includes another lab''s cultures');
 
 -- Signed out: no access at all.
 set local role anon;
