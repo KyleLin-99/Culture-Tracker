@@ -6,7 +6,7 @@
 2. Make the change with its tests (see `docs/TESTING.md`).
 3. Run `npm run check` (types, lint, unit tests). If you touched SQL and have Docker running: `npx supabase start` then `npm run test:db`.
 4. Push and open a pull request. Fill in the checklist.
-5. CI runs (types, lint, unit, database, screens). Claude reviews the diff and comments.
+5. CI runs (types, lint, unit, database, screens, tests included). Claude reviews the diff and comments. No tests needed? Add the `no-tests-needed` label and say why.
 6. Squash-merge when CI is green. Delete the branch.
 7. If the PR added a migration: `npx supabase db push --remote`.
 
