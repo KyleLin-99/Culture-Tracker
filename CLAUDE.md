@@ -2,6 +2,15 @@
 
 @AGENTS.md
 
+## Definition of done
+
+A change is done when:
+1. Its behaviour is covered by tests at the right layer (see `docs/TESTING.md`), including a failing-first test for every bug fix.
+2. `npm run check` passes, plus `npm run test:e2e` for screen changes and `npm run test:db` for SQL changes.
+3. Docs are updated if behaviour changed.
+
+After implementing anything, use the `test-writer` agent (`.claude/agents/test-writer.md`) to add or update tests. CI's **Tests included** check fails any PR that changes `src/` or `supabase/migrations/` without changing tests.
+
 ## Before you change code
 
 - Read `docs/TESTING.md`. Every change needs a test at the right layer; run `npm run check` before finishing.
