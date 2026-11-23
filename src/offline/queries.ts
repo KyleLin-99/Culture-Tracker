@@ -159,7 +159,17 @@ export function localQueries(db: SqlDb) {
       );
       return rows.map(({ run_code, ...b }) => ({ ...b, sterilization_runs: run_code === null ? null : { code: run_code } }));
     },
+
+    /** Plates to relabel: the server renumbered them after a code conflict. */
+    async openRelabels(): Promise<Relabel[]> {
+      return db.all<Relabel>(
+        `select id, entity_id, old_code, new_code, created_at from relabels
+         where resolved_at is null and deleted_at is null order by created_at, old_code`,
+      );
+    },
   };
 }
+
+export type Relabel = { id: string; entity_id: string; old_code: string; new_code: string; created_at: string };
 
 export type LocalQueries = ReturnType<typeof localQueries>;

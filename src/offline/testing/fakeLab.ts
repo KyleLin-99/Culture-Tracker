@@ -19,14 +19,14 @@ export function tick(): string {
 export type FakeLab = Record<TableName, RemoteRow[]>;
 
 export function emptyLab(): FakeLab {
-  return { strains: [], sterilization_runs: [], media_batches: [], items: [], events: [] };
+  return { strains: [], sterilization_runs: [], media_batches: [], items: [], events: [], relabels: [] };
 }
 
 type ItemOpts = { status?: string; madeOn?: string; mediaBatchId?: string | null; strainId?: string };
 
 /** Adds items to a lab, computing codes the way the database trigger does. */
 export function builder(lab: FakeLab) {
-  const byCode = new Map<string, RemoteRow>();
+  const byCode = new Map<string, RemoteRow>(lab.items.map((i) => [i.code as string, i]));
   const add = (row: Partial<RemoteRow> & { code: string; kind: string }, opts: ItemOpts = {}) => {
     const now = tick();
     const full: RemoteRow = {

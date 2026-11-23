@@ -18,7 +18,7 @@ After implementing anything, use the `test-writer` agent (`.claude/agents/test-w
 - Culture-code rules live in two places that must agree: the SQL trigger (`*_culture_codes.sql`) and `src/domain/cultureCode.ts`. Change both, with a pgTAP test and a Jest test.
 - Every table keeps `account_id`, row-level security, and composite foreign keys with `account_id`. New RPC functions are `security invoker`, revoke from `anon`, grant to `authenticated`.
 - Codes and lineage are permanent once written; don't add ways to edit them.
-- Phones read from a local copy (`src/offline/`). A new read in `src/lib/api.ts` that phones use needs a local version in `src/offline/queries.ts`, with a test showing it answers like the server function. A new synced table or column goes in `src/offline/tables.ts` plus a new step in `schema.ts` (never edit an old step).
+- Phones read from a local copy (`src/offline/`). A new read in `src/lib/api.ts` that phones use needs a local version in `src/offline/queries.ts`, with a test showing it answers like the server function. A new synced table or column goes in `src/offline/tables.ts` plus a new step in `schema.ts` (never edit an old step). A new kind of change phones can make offline needs an outbox op (`src/offline/outbox.ts`), an idempotent server function, and tests on both sides.
 
 ## When reviewing a pull request
 

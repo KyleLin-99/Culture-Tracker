@@ -28,17 +28,18 @@ export function SyncIndicator() {
 
 /** One line for the home screen: where the phone's copy stands. Empty on web. */
 export function SyncSummary() {
-  const { state, lastSyncedAt, message } = useSyncStatus();
+  const { state, lastSyncedAt, message, pending } = useSyncStatus();
   if (state === 'off') return null;
+  const waiting = pending ? ` · ${pending} change${pending === 1 ? '' : 's'} waiting to sync` : '';
   const text =
     state === 'syncing' && !lastSyncedAt
       ? 'Copying your lab to this phone…'
       : state === 'syncing'
-        ? 'Syncing…'
+        ? `Syncing…${waiting}`
         : state === 'offline'
-          ? `Offline · showing your lab as of ${ago(lastSyncedAt)}`
+          ? `Offline · showing your lab as of ${ago(lastSyncedAt)}${waiting}`
           : state === 'error'
-            ? `Sync issue: ${message ?? 'unknown error'} · last synced ${ago(lastSyncedAt)}`
-            : `Synced ${ago(lastSyncedAt)} · works offline`;
+            ? `Sync issue: ${message ?? 'unknown error'} · last synced ${ago(lastSyncedAt)}${waiting}`
+            : `Synced ${ago(lastSyncedAt)} · works offline${waiting}`;
   return <Text style={{ color: state === 'error' ? colors.danger : colors.muted, fontSize: font.small }}>{text}</Text>;
 }

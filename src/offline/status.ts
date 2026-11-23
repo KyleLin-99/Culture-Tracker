@@ -8,9 +8,13 @@ export type SyncStatus = {
   /** When the local copy last matched the server (ISO time). */
   lastSyncedAt: string | null;
   message: string | null;
+  /** Changes made on this phone not yet confirmed by the server. */
+  pending: number;
+  /** Changes the server refused (listed on the home screen until dismissed). */
+  failed: number;
 };
 
-let status: SyncStatus = { state: 'off', lastSyncedAt: null, message: null };
+let status: SyncStatus = { state: 'off', lastSyncedAt: null, message: null, pending: 0, failed: 0 };
 const listeners = new Set<() => void>();
 
 export function setSyncStatus(next: Partial<SyncStatus>): void {

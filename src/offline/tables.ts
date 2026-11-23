@@ -19,12 +19,19 @@ export const TABLES = {
     'id', 'account_id', 'item_id', 'type', 'occurred_at', 'note', 'contam_type', 'photo_key', 'created_at', 'updated_at',
     'deleted_at',
   ],
+  relabels: [
+    'id', 'account_id', 'entity', 'entity_id', 'old_code', 'new_code', 'resolved_at', 'created_at', 'updated_at',
+    'deleted_at',
+  ],
 } as const;
+
+/** Tables whose rows can be changed on the phone before the server confirms them. */
+export const PENDING_TABLES: TableName[] = ['strains', 'items', 'events', 'relabels'];
 
 export type TableName = keyof typeof TABLES;
 
 /** Pull order: parents before the rows that point at them. */
-export const PULL_ORDER: TableName[] = ['strains', 'sterilization_runs', 'media_batches', 'items', 'events'];
+export const PULL_ORDER: TableName[] = ['strains', 'sterilization_runs', 'media_batches', 'items', 'events', 'relabels'];
 
 /** A row as it arrives from Supabase. */
 export type RemoteRow = Record<string, unknown> & { id: string; updated_at: string };

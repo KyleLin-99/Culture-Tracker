@@ -1,6 +1,6 @@
 import { clearAll, getMeta, setMeta } from './schema';
 import type { SqlDb, SqlParam } from './sql';
-import { PULL_ORDER, type RemoteRow, TABLES, type TableName } from './tables';
+import { PENDING_TABLES, PULL_ORDER, type RemoteRow, TABLES, type TableName } from './tables';
 
 /** Where pulled rows come from: Supabase in the app (remote.ts), a fake in tests. */
 export interface RemoteSource {
@@ -34,23 +34,27 @@ function toSql(v: unknown): SqlParam {
   return JSON.stringify(v); // arrays (aliases) and anything structured
 }
 
-const upsertSql = Object.fromEntries(
-  (Object.keys(TABLES) as TableName[]).map((t) => {
-    const cols = TABLES[t];
-    const set = cols.filter((c) => c !== 'id').map((c) => `${c} = excluded.${c}`);
-    return [
-      t,
-      `insert into ${t} (${cols.join(', ')}) values (${cols.map(() => '?').join(', ')}) on conflict (id) do update set ${set.join(', ')}`,
-    ];
-  }),
-) as Record<TableName, string>;
+function upsertSql(t: TableName, force: boolean): string {
+  const cols = TABLES[t];
+  const pending = PENDING_TABLES.includes(t);
+  const set = cols.filter((c) => c !== 'id').map((c) => `${c} = excluded.${c}`);
+  if (pending) set.push('local_pending = 0');
+  // A pull never overwrites a change still waiting to be sent from this phone.
+  const guard = pending && !force ? ` where ${t}.local_pending = 0` : '';
+  return `insert into ${t} (${cols.join(', ')}) values (${cols.map(() => '?').join(', ')}) on conflict (id) do update set ${set.join(', ')}${guard}`;
+}
 
-/** Writes rows into the local copy, replacing any older version of each. */
-export async function upsertRows(db: SqlDb, table: TableName, rows: RemoteRow[]): Promise<void> {
+/**
+ * Writes server rows into the local copy, replacing older versions. `force`
+ * (used when the server confirms this phone's own change) also replaces rows
+ * that are waiting to be sent.
+ */
+export async function upsertRows(db: SqlDb, table: TableName, rows: RemoteRow[], force = false): Promise<void> {
   if (!rows.length) return;
+  const sql = upsertSql(table, force);
   await db.transaction(async () => {
     for (const row of rows) {
-      await db.run(upsertSql[table], TABLES[table].map((c) => toSql(row[c])));
+      await db.run(sql, TABLES[table].map((c) => toSql(row[c])));
     }
   });
 }
