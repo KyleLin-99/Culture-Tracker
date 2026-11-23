@@ -1,0 +1,22 @@
+# Every PR that changes app code or the database must change tests too.
+# Override with the "no-tests-needed" label (say why in the PR description).
+name: Tests included
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  tests-included:
+    name: Tests included
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-tests-needed') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: node scripts/check-tests-included.mjs origin/${{ github.base_ref }}

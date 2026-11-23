@@ -11,6 +11,12 @@ Four layers. CI runs all of them on every pull request, every push to `main`, an
 
 `npm run check` runs types, lint and unit tests together; use it before every push.
 
+## Tests are required
+
+Every pull request that changes app code (`src/`) or the database (`supabase/migrations/`) must also change tests. The **Tests included** check enforces this. For changes that truly need none (a refactor with no behaviour change, wording, config), add the `no-tests-needed` label and say why in the PR description.
+
+In Claude Code, the `test-writer` agent writes tests for the current branch: ask "use the test-writer agent on this change".
+
 ## Which layer gets the test
 
 - **A rule the database enforces** (codes, permissions, ordering from SQL) → pgTAP. The database is the source of truth.
