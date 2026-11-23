@@ -85,6 +85,10 @@ database tests locally).
 6. **Contamination trace**: ranks what contaminated cultures share that clean
    ones don't (parent, media batch, sterilization run, day made), with relative
    risk and a Fisher's exact p value.
+7. **Offline on your phone**: the app keeps a copy of your lab (a year of
+   history plus everything active) and syncs it in the background, so lookups,
+   culture screens and lineage work with no signal. Saving changes still needs
+   a connection; offline saving is next.
 
 ## Project layout
 
