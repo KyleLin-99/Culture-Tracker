@@ -88,3 +88,49 @@ export type ItemEvent = {
   note: string | null;
   contam_type: string | null;
 };
+
+export type SterilizationMethod = 'pressure_cooker' | 'autoclave' | 'pasteurize' | 'other';
+
+export type SterilizationRun = {
+  id: string;
+  account_id: string;
+  code: string;
+  method: SterilizationMethod;
+  psi: number | null;
+  minutes: number | null;
+  run_on: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type MediaKind = 'agar' | 'lc' | 'other';
+
+export type MediaBatch = {
+  id: string;
+  account_id: string;
+  code: string;
+  kind: MediaKind;
+  recipe: string | null;
+  sterilization_run_id: string | null;
+  made_on: string;
+  notes: string | null;
+  created_at: string;
+  sterilization_runs?: { code: string } | null;
+};
+
+export type TraceFactor = 'parent' | 'media_batch' | 'sterilization_run' | 'made_on';
+
+/** Row shape of contamination_trace(). */
+export type TraceRow = {
+  factor: TraceFactor;
+  factor_id: string;
+  label: string;
+  contaminated_with: number;
+  clean_with: number;
+  contaminated_total: number;
+  clean_total: number;
+  rate_with: number;
+  rate_without: number | null;
+  relative_risk: number;
+  p_value: number;
+};

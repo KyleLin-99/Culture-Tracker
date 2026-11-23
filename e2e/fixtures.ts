@@ -17,6 +17,7 @@ function item(id: string, code: string, kind: string, medium: string, generation
     position: kind === 'transfer' ? 1 : null, backup_number: kind === 'backup' ? 1 : null,
     code, generation, status, location: null, made_on: MADE_ON, initials: 'KL', notes: null,
     created_at: `${MADE_ON}T12:00:00Z`, strains: { name: 'Blue Oyster' },
+    media_batch_id: null, media_batches: null,
   };
 }
 
@@ -60,8 +61,26 @@ function lineage(items: Row[], rootId: string) {
   return rows;
 }
 
+/** Lab records every test starts with: one run and one agar batch made in it. */
+export function seedRecords() {
+  const run = { id: 'run-1', account_id: ACCOUNT_ID, code: 'SR-001', method: 'pressure_cooker', psi: 15, minutes: 90, run_on: MADE_ON, notes: null, created_at: `${MADE_ON}T10:00:00Z` };
+  const batch = { id: 'mb-1', account_id: ACCOUNT_ID, code: 'MB-001', kind: 'agar', recipe: 'MEA 2%', sterilization_run_id: 'run-1', made_on: MADE_ON, notes: null, created_at: `${MADE_ON}T11:00:00Z`, sterilization_runs: { code: 'SR-001' } };
+  return { runs: [run] as Record<string, unknown>[], batches: [batch] as Record<string, unknown>[] };
+}
+
+/** What contamination_trace() returns in the screen tests (the SR-002 example). */
+export const TRACE_ROWS = [
+  { factor: 'media_batch', factor_id: 'mb-2', label: 'MB-002', contaminated_with: 4, clean_with: 1, contaminated_total: 5, clean_total: 12, rate_with: 0.8, rate_without: 0.083, relative_risk: 9.6, p_value: 0.00986 },
+  { factor: 'sterilization_run', factor_id: 'run-2', label: 'SR-002', contaminated_with: 4, clean_with: 1, contaminated_total: 5, clean_total: 12, rate_with: 0.8, rate_without: 0.083, relative_risk: 9.6, p_value: 0.00986 },
+  { factor: 'parent', factor_id: 't-1', label: 'TBG-1', contaminated_with: 1, clean_with: 5, contaminated_total: 5, clean_total: 12, rate_with: 0.167, rate_without: 0.364, relative_risk: 0.46, p_value: 0.93 },
+];
+
 export type Lab = {
   items: Row[];
+  runs: Record<string, unknown>[];
+  batches: Record<string, unknown>[];
+  /** Every insert the app made: table and request body. */
+  inserts: { table: string; body: Record<string, unknown> }[];
   /** Every RPC call the app made: function name and request body. */
   rpcCalls: { fn: string; body: Record<string, unknown> }[];
 };
@@ -91,6 +110,30 @@ async function mockSupabase(page: Page, lab: Lab) {
     }
     if (path.startsWith('/rest/v1/events')) return json([]);
 
+    // Sterilization runs and media batches: list, and insert with an automatic code.
+    for (const [table, rows, prefix] of [
+      ['sterilization_runs', lab.runs, 'SR'],
+      ['media_batches', lab.batches, 'MB'],
+    ] as const) {
+      if (!path.startsWith(`/rest/v1/${table}`)) continue;
+      if (req.method() === 'POST') {
+        const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
+        lab.inserts.push({ table, body });
+        const run = lab.runs.find((r) => r.id === body.sterilization_run_id);
+        const row = {
+          id: `${prefix.toLowerCase()}-${rows.length + 1}`,
+          code: `${prefix}-${String(rows.length + 1).padStart(3, '0')}`,
+          created_at: new Date().toISOString(),
+          ...body,
+          ...(table === 'media_batches' ? { sterilization_runs: run ? { code: run.code } : null } : {}),
+        };
+        rows.unshift(row);
+        return json(single ? row : [row], 201);
+      }
+      const kind = url.searchParams.get('kind')?.replace(/^eq\./, '');
+      return json(rows.filter((r) => !kind || r.kind === kind));
+    }
+
     if (path.startsWith('/rest/v1/rpc/')) {
       const fn = path.slice('/rest/v1/rpc/'.length);
       const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
@@ -98,6 +141,7 @@ async function mockSupabase(page: Page, lab: Lab) {
 
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
+      if (fn === 'contamination_trace') return json(TRACE_ROWS);
       if (fn === 'lookup_code') {
         const q = String(body.p_query);
         return json(
@@ -130,7 +174,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

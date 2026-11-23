@@ -87,6 +87,8 @@ export default function ItemDetail() {
           <StatusPill status={i.status} label={STATUS_LABEL[i.status]} />
           <Muted>
             {MEDIUM_LABEL[i.medium]} · Gen {i.generation}
+            {i.media_batches ? ` · ${i.media_batches.code}` : ''}
+            {i.media_batches?.sterilization_runs ? ` (${i.media_batches.sterilization_runs.code})` : ''}
             {i.location ? ` · ${i.location}` : ''}
           </Muted>
         </View>
@@ -177,6 +179,9 @@ export default function ItemDetail() {
             </Card>
           )}
         </View>
+      )}
+      {i.status === 'contaminated' && (
+        <Button title="Trace likely cause" onPress={() => router.push('/trace')} />
       )}
       {!active && (
         <Button title="Mark active again" variant="secondary" busy={busy} onPress={() => run(() => setItemStatus(i.id, 'active'))} />

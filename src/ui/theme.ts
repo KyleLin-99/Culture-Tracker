@@ -31,4 +31,5 @@ export const statusColor: Record<string, { fg: string; bg: string }> = {
   used: { fg: colors.muted, bg: '#ECEEEA' },
   archived: { fg: colors.muted, bg: '#ECEEEA' },
   discarded: { fg: colors.muted, bg: '#ECEEEA' },
+  warn: { fg: colors.warn, bg: colors.warnBg },
 };

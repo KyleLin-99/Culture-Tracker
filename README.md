@@ -78,8 +78,13 @@ database tests locally).
    clone, or a vendor's initials).
 3. Open a culture → **Transfer** → choose how many and onto what. The app shows
    the codes to write on the new labels.
-4. From any culture: make a backup, mark it contaminated, retire it, add notes,
+4. From any culture: make backups, mark it contaminated, retire it, add notes,
    and see its lineage and history. Type a code on the home screen to jump to it.
+5. **Batches and runs**: log each sterilization run (`SR-001`) and the media
+   batches made in it (`MB-001`), then pick the batch when you transfer.
+6. **Contamination trace**: ranks what contaminated cultures share that clean
+   ones don't (parent, media batch, sterilization run, day made), with relative
+   risk and a Fisher's exact p value.
 
 ## Project layout
 
@@ -114,14 +119,14 @@ supabase/
   change. Status, location, notes and aliases can.
 - **Functions** (called with `supabase.rpc`): `create_account`,
   `create_transfers`, `create_backup`, `set_item_status`, `lookup_code`,
-  `item_lineage`, `strain_tree`.
+  `item_lineage`, `strain_tree`, `create_backups`, `contamination_trace`.
 
 ### Tests
 
 | Command | What it runs |
 |---|---|
 | `npm run check` | types, lint, unit tests (run before every push) |
-| `npm run test:db` | 61 pgTAP database tests (needs Docker Desktop and `npx supabase start`) |
+| `npm run test:db` | 81 pgTAP database tests (needs Docker Desktop and `npx supabase start`) |
 | `npm run test:e2e` | web build + Playwright screen tests against a mocked backend |
 
 GitHub Actions runs all of them on every pull request, every push to `main` and
