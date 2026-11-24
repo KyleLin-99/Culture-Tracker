@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 
+import { friendlyError } from '@/domain/errors';
+
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
@@ -37,7 +39,8 @@ export function errorMessage(error: unknown): string {
     return 'No connection. On your phone, changes save offline once your lab has synced once; on the web, try again when you are back online.';
   }
   if (error && typeof error === 'object' && 'message' in error) {
-    return String((error as { message: unknown }).message);
+    const code = 'code' in error ? String((error as { code: unknown }).code) : undefined;
+    return friendlyError(String((error as { message: unknown }).message), code);
   }
   return 'Something went wrong. Please try again.';
 }

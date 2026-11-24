@@ -1,7 +1,11 @@
 # Lab sharing and roles (design, not built)
 
-Status: **proposed**. Needs Kyle's answers to the open questions at the end before
-any code. Nothing here changes behaviour yet.
+Status: **decided 2026-11-24** (Kyle accepted every recommendation below), being
+built in the 4 PRs listed under "PRs, in order".
+
+Decisions: invites by one-time code; techs can save recipe versions but not change
+lab settings; a person can belong to several labs; shared lineage links, tree only,
+expiring after 30 days by default; stay on the Supabase free plan for now.
 
 ## Goal
 
@@ -94,7 +98,7 @@ notes, expired or revoked tokens).
 
 ## PRs, in order
 
-1. Roles + policies (no UI change for a solo lab: Kyle stays owner).
+1. Roles + policies (no UI change for a solo lab: Kyle stays owner). **Built.**
 2. Invites + People screen + more than one lab per user + lab switcher.
 3. Viewer mode on phones.
 4. Shared lineage links.
