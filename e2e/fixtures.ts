@@ -217,6 +217,12 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (single && id) return json(lab.items.find((i) => i.id === id) ?? {}, lab.items.some((i) => i.id === id) ? 200 : 406);
       const kind = url.searchParams.get('kind')?.replace(/^eq\./, '');
       const status = url.searchParams.get('status')?.replace(/^eq\./, '');
+      // media_batch_id=in.(<ids>): cultures made on those batches (the batch and run pages).
+      const onBatches = url.searchParams.get('media_batch_id');
+      if (onBatches) {
+        const ids = onBatches.replace(/^in\.\(/, '').replace(/\)$/, '').split(',');
+        return json(lab.items.filter((i) => ids.includes(i.media_batch_id as string) && !i.deleted_at));
+      }
       // refresh_of=eq.<id> or refresh_of=in.(<ids>): cultures refreshing those backups, newest first.
       const ref = url.searchParams.get('refresh_of');
       if (ref) {
@@ -278,7 +284,7 @@ async function mockSupabase(page: Page, lab: Lab) {
                 sterilization_runs: run ? { code: run.code } : null,
                 recipes: (() => {
                   const r = lab.recipes.find((x) => x.id === body.recipe_id);
-                  return r ? { name: r.name, version: r.version } : null;
+                  return r ? { name: r.name, version: r.version, family_id: r.family_id } : null;
                 })(),
               }
             : {}),
@@ -286,8 +292,16 @@ async function mockSupabase(page: Page, lab: Lab) {
         rows.unshift(row);
         return json(single ? row : [row], 201);
       }
+      // id=eq.<id> (one, by id) and sterilization_run_id=eq.<id> (a run's batches, by code).
+      const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+      if (single && id) {
+        const row = rows.find((r) => r.id === id);
+        return row ? json(row) : json({ message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' }, 406);
+      }
       const kind = url.searchParams.get('kind')?.replace(/^eq\./, '');
-      return json(rows.filter((r) => !kind || r.kind === kind));
+      const runId = url.searchParams.get('sterilization_run_id')?.replace(/^eq\./, '');
+      const found = rows.filter((r) => (!kind || r.kind === kind) && (!runId || r.sterilization_run_id === runId) && !r.deleted_at);
+      return json(runId ? [...found].sort((a, b) => String(a.code).localeCompare(String(b.code))) : found);
     }
 
     if (path.startsWith('/rest/v1/rpc/')) {

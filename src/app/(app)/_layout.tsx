@@ -54,6 +54,8 @@ export default function AppLayout() {
       <Stack.Screen name="items/[id]/index" options={{ title: 'Culture' }} />
       <Stack.Screen name="items/[id]/transfer" options={{ title: 'Transfer' }} />
       <Stack.Screen name="batches" options={{ title: 'Batches and runs' }} />
+      <Stack.Screen name="batch/[id]" options={{ title: 'Batch' }} />
+      <Stack.Screen name="run/[id]" options={{ title: 'Run' }} />
       <Stack.Screen name="trace" options={{ title: 'Contamination trace' }} />
       <Stack.Screen name="labels" options={{ title: 'Print labels' }} />
       <Stack.Screen name="people" options={{ title: 'People' }} />

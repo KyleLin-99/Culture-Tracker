@@ -103,7 +103,10 @@ database tests locally).
    batches keep the version they were made from.
 8. **Batches and runs**: log each sterilization or pasteurization run
    (`SR-001`) and the media batches made in it (`MB-001`), picking the recipe
-   and how much you made. Then pick the batch when you transfer.
+   and how much you made. Then pick the batch when you transfer. Tap a batch or
+   run to see what it was, every culture made from it, and its contamination
+   rate next to the rest of the lab over the same dates (a bad batch or a weak
+   run stands out).
 9. **Contamination trace**: ranks what contaminated cultures share that clean
    ones don't (parent, media batch, sterilization run, recipe, day made), with
    relative risk and a Fisher's exact p value.

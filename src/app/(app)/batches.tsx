@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { useCanWrite, useMembership } from '@/auth/AuthProvider';
-import { labelDate } from '@/domain/cultureCode';
-import { formatVolume, recipeLabel, scaleIngredients } from '@/domain/recipes';
+import { batchSummary, KINDS, METHODS, runSummary } from '@/domain/media';
+import { recipeLabel, scaleIngredients } from '@/domain/recipes';
 import type { MediaKind, SterilizationMethod } from '@/domain/types';
 import { createBatch, createRun, listBatches, listRecipes, listRuns } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
@@ -12,21 +12,6 @@ import { useData } from '@/lib/useData';
 import { Button, Card, Choices, ErrorText, Field, LinkText, Muted, Screen, SectionTitle, styles } from '@/ui/components';
 import { IngredientCard } from '@/ui/Ingredients';
 import { space } from '@/ui/theme';
-
-const METHODS: { value: SterilizationMethod; label: string }[] = [
-  { value: 'pressure_cooker', label: 'Pressure cooker' },
-  { value: 'autoclave', label: 'Autoclave' },
-  { value: 'pasteurize', label: 'Pasteurize' },
-  { value: 'other', label: 'Other' },
-];
-const METHOD_LABEL = Object.fromEntries(METHODS.map((m) => [m.value, m.label])) as Record<SterilizationMethod, string>;
-
-const KINDS: { value: MediaKind; label: string }[] = [
-  { value: 'agar', label: 'Agar' },
-  { value: 'lc', label: 'Liquid culture' },
-  { value: 'other', label: 'Other' },
-];
-const KIND_LABEL = Object.fromEntries(KINDS.map((k) => [k.value, k.label])) as Record<MediaKind, string>;
 
 /** A positive number from a text field, or null when blank. */
 function numberOrNull(text: string): number | null {
@@ -177,20 +162,9 @@ export default function Batches() {
       {batches.data?.length === 0 && <Muted>No batches yet.</Muted>}
       <View style={{ gap: space.sm }}>
         {batches.data?.map((b) => (
-          <Card key={b.id}>
+          <Card key={b.id} onPress={() => router.push({ pathname: '/batch/[id]', params: { id: b.id } })}>
             <Text style={styles.codeSmall}>{b.code}</Text>
-            <Muted>
-              {[
-                KIND_LABEL[b.kind],
-                b.recipes ? recipeLabel(b.recipes) : null,
-                b.volume_ml ? formatVolume(b.volume_ml) : null,
-                b.recipe,
-                labelDate(b.made_on),
-                b.sterilization_runs?.code,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Muted>
+            <Muted>{batchSummary(b)}</Muted>
           </Card>
         ))}
       </View>
@@ -199,19 +173,9 @@ export default function Batches() {
       {runs.data?.length === 0 && <Muted>No runs yet.</Muted>}
       <View style={{ gap: space.sm }}>
         {runs.data?.map((r) => (
-          <Card key={r.id}>
+          <Card key={r.id} onPress={() => router.push({ pathname: '/run/[id]', params: { id: r.id } })}>
             <Text style={styles.codeSmall}>{r.code}</Text>
-            <Muted>
-              {[
-                METHOD_LABEL[r.method],
-                r.psi ? `${r.psi} psi` : null,
-                r.minutes ? `${r.minutes} min` : null,
-                labelDate(r.run_on),
-                r.notes,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Muted>
+            <Muted>{[runSummary(r), r.notes].filter(Boolean).join(' · ')}</Muted>
           </Card>
         ))}
       </View>

@@ -60,6 +60,24 @@ const SIBLING_KEY = `case when c.kind = 'backup'
 
 const TREE_COLUMNS = 'i.id, i.parent_id, i.code, i.kind, i.medium, i.status, i.generation, i.made_on, i.initials';
 
+async function batchRows(db: SqlDb, where: string, params: (string | number | null)[]): Promise<MediaBatch[]> {
+  const rows = await db.all<
+    MediaBatch & { run_code: string | null; recipe_name: string | null; recipe_version: number | null; recipe_family: string | null }
+  >(
+    `select m.*, r.code as run_code, rc.name as recipe_name, rc.version as recipe_version, rc.family_id as recipe_family
+     from media_batches m
+     left join sterilization_runs r on r.id = m.sterilization_run_id
+     left join recipes rc on rc.id = m.recipe_id
+     where ${where}`,
+    params,
+  );
+  return rows.map(({ run_code, recipe_name, recipe_version, recipe_family, ...b }) => ({
+    ...b,
+    sterilization_runs: run_code === null ? null : { code: run_code },
+    recipes: recipe_name === null ? null : { name: recipe_name, version: recipe_version!, family_id: recipe_family! },
+  }));
+}
+
 export function localQueries(db: SqlDb) {
   return {
     async recentItems(limit = 15): Promise<ItemWithRefs[]> {
@@ -232,19 +250,39 @@ export function localQueries(db: SqlDb) {
     },
 
     async listBatches(kind?: MediaKind | null, limit = 30): Promise<MediaBatch[]> {
-      const rows = await db.all<MediaBatch & { run_code: string | null; recipe_name: string | null; recipe_version: number | null }>(
-        `select m.*, r.code as run_code, rc.name as recipe_name, rc.version as recipe_version from media_batches m
-         left join sterilization_runs r on r.id = m.sterilization_run_id
-         left join recipes rc on rc.id = m.recipe_id
-         where m.deleted_at is null and (? is null or m.kind = ?)
-         order by m.made_on desc, m.created_at desc limit ?`,
-        [kind ?? null, kind ?? null, limit],
+      return batchRows(db, 'm.deleted_at is null and (? is null or m.kind = ?) order by m.made_on desc, m.created_at desc limit ?', [
+        kind ?? null,
+        kind ?? null,
+        limit,
+      ]);
+    },
+
+    async getRun(id: string): Promise<SterilizationRun> {
+      const row = await db.first<SterilizationRun>('select * from sterilization_runs where id = ?', [id]);
+      if (!row) throw new Error('Run not found');
+      return row;
+    },
+
+    async getBatch(id: string): Promise<MediaBatch> {
+      const [row] = await batchRows(db, 'm.id = ?', [id]);
+      if (!row) throw new Error('Batch not found');
+      return row;
+    },
+
+    /** Batches sterilized in a run, by code. */
+    async batchesInRun(runId: string): Promise<MediaBatch[]> {
+      return batchRows(db, 'm.sterilization_run_id = ? and m.deleted_at is null order by m.code', [runId]);
+    },
+
+    /** Cultures made on these batches, newest first. */
+    async itemsOnBatches(batchIds: string[]): Promise<ItemWithRefs[]> {
+      if (!batchIds.length) return [];
+      const rows = await db.all<ItemRow>(
+        `${ITEM_SELECT} where i.deleted_at is null and i.media_batch_id in (${batchIds.map(() => '?').join(',')})
+         order by i.made_on desc, i.code`,
+        batchIds,
       );
-      return rows.map(({ run_code, recipe_name, recipe_version, ...b }) => ({
-        ...b,
-        sterilization_runs: run_code === null ? null : { code: run_code },
-        recipes: recipe_name === null ? null : { name: recipe_name, version: recipe_version! },
-      }));
+      return rows.map(toItem);
     },
 
     /** Every version of every recipe, archived ones included (currentRecipes() picks). */

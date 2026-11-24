@@ -550,7 +550,7 @@ export async function strainTree(strainId: string): Promise<TreeRow[]> {
 
 // --- Sterilization runs and media batches --------------------------------
 
-const BATCH_SELECT = '*, sterilization_runs(code), recipes(name, version)';
+const BATCH_SELECT = '*, sterilization_runs(code), recipes(name, version, family_id)';
 
 export async function listRuns(limit = 30): Promise<SterilizationRun[]> {
   const local = await localReader();
@@ -606,6 +606,47 @@ export async function listBatches(kind?: MediaKind | null, limit = 30): Promise<
     .limit(limit);
   if (kind) q = q.eq('kind', kind);
   return unwrap(await q);
+}
+
+export async function getRun(id: string): Promise<SterilizationRun> {
+  const local = await localReader();
+  if (local) return local.getRun(id);
+  return unwrap(await supabase.from('sterilization_runs').select('*').eq('id', id).single());
+}
+
+export async function getBatch(id: string): Promise<MediaBatch> {
+  const local = await localReader();
+  if (local) return local.getBatch(id);
+  return unwrap(await supabase.from('media_batches').select(BATCH_SELECT).eq('id', id).single());
+}
+
+/** Batches sterilized in a run, by code. */
+export async function batchesInRun(runId: string): Promise<MediaBatch[]> {
+  const local = await localReader();
+  if (local) return local.batchesInRun(runId);
+  return unwrap(
+    await supabase.from('media_batches').select(BATCH_SELECT).eq('sterilization_run_id', runId).is('deleted_at', null).order('code'),
+  );
+}
+
+/** Cultures made on these batches, newest first. */
+export async function itemsOnBatches(batchIds: string[]): Promise<ItemWithRefs[]> {
+  if (!batchIds.length) return [];
+  const local = await localReader();
+  if (local) return local.itemsOnBatches(batchIds);
+  const out: ItemWithRefs[] = [];
+  for (let i = 0; i < batchIds.length; i += 100) {
+    out.push(
+      ...unwrap<ItemWithRefs[]>(
+        await supabase
+          .from('items')
+          .select('*, strains(name), media_batches(code, sterilization_runs(code))')
+          .in('media_batch_id', batchIds.slice(i, i + 100))
+          .is('deleted_at', null),
+      ),
+    );
+  }
+  return out.sort((a, b) => (a.made_on !== b.made_on ? (a.made_on < b.made_on ? 1 : -1) : a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
 }
 
 export async function createBatch(args: {
