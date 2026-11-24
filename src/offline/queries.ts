@@ -10,6 +10,7 @@ import type {
   LookupRow,
   MediaBatch,
   MediaKind,
+  Recipe,
   SterilizationRun,
   Strain,
   TreeRow,
@@ -150,14 +151,27 @@ export function localQueries(db: SqlDb) {
     },
 
     async listBatches(kind?: MediaKind | null, limit = 30): Promise<MediaBatch[]> {
-      const rows = await db.all<MediaBatch & { run_code: string | null }>(
-        `select m.*, r.code as run_code from media_batches m
+      const rows = await db.all<MediaBatch & { run_code: string | null; recipe_name: string | null; recipe_version: number | null }>(
+        `select m.*, r.code as run_code, rc.name as recipe_name, rc.version as recipe_version from media_batches m
          left join sterilization_runs r on r.id = m.sterilization_run_id
+         left join recipes rc on rc.id = m.recipe_id
          where m.deleted_at is null and (? is null or m.kind = ?)
          order by m.made_on desc, m.created_at desc limit ?`,
         [kind ?? null, kind ?? null, limit],
       );
-      return rows.map(({ run_code, ...b }) => ({ ...b, sterilization_runs: run_code === null ? null : { code: run_code } }));
+      return rows.map(({ run_code, recipe_name, recipe_version, ...b }) => ({
+        ...b,
+        sterilization_runs: run_code === null ? null : { code: run_code },
+        recipes: recipe_name === null ? null : { name: recipe_name, version: recipe_version! },
+      }));
+    },
+
+    /** Every version of every recipe, archived ones included (currentRecipes() picks). */
+    async listRecipes(): Promise<Recipe[]> {
+      const rows = await db.all<Omit<Recipe, 'ingredients'> & { ingredients: string }>(
+        'select * from recipes order by name, version',
+      );
+      return rows.map((r) => ({ ...r, ingredients: JSON.parse(r.ingredients) as Recipe['ingredients'] }));
     },
 
     /** Plates to relabel: the server renumbered them after a code conflict. */

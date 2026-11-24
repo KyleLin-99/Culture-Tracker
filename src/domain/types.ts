@@ -119,13 +119,34 @@ export type MediaBatch = {
   kind: MediaKind;
   recipe: string | null;
   sterilization_run_id: string | null;
+  /** The exact recipe version this batch was mixed from, and how much was made. */
+  recipe_id: string | null;
+  volume_ml: number | null;
   made_on: string;
   notes: string | null;
   created_at: string;
   sterilization_runs?: { code: string } | null;
+  recipes?: { name: string; version: number } | null;
 };
 
-export type TraceFactor = 'parent' | 'media_batch' | 'sterilization_run' | 'made_on';
+export type Ingredient = { name: string; amount: number; unit: string };
+
+/** One saved version of a recipe. Versions of the same recipe share family_id. */
+export type Recipe = {
+  id: string;
+  account_id: string;
+  family_id: string;
+  version: number;
+  name: string;
+  kind: MediaKind;
+  volume_ml: number;
+  ingredients: Ingredient[];
+  steps: string | null;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type TraceFactor = 'parent' | 'media_batch' | 'sterilization_run' | 'recipe' | 'made_on';
 
 /** Row shape of contamination_trace(). */
 export type TraceRow = {

@@ -18,9 +18,14 @@ beforeAll(async () => {
   await migrate(db);
   const lab = standardLab();
   lab.sterilization_runs.push({ id: 'run-2', account_id: ACCOUNT, code: 'SR-002', method: 'pressure_cooker', psi: 15, minutes: 90, run_on: '2026-11-19', notes: null, created_at: tick(), updated_at: tick(), deleted_at: null });
+  const recipe = (id: string, version: number, name: string) => ({
+    id, account_id: ACCOUNT, family_id: 'fam-mea', version, name, kind: 'agar', volume_ml: 500,
+    ingredients: [{ name: 'Malt extract', amount: 10, unit: 'g' }], steps: null, created_at: tick(), updated_at: tick(), deleted_at: null,
+  });
+  lab.recipes.push(recipe('rc-1', 1, 'MEA'), recipe('rc-2', 2, 'MEA 2%'));
   lab.media_batches.push(
-    { id: 'mb-2', account_id: ACCOUNT, code: 'MB-002', kind: 'agar', recipe: 'MEA', sterilization_run_id: 'run-2', made_on: '2026-11-19', notes: null, created_at: tick(), updated_at: tick(), deleted_at: null },
-    { id: 'mb-3', account_id: ACCOUNT, code: 'MB-003', kind: 'lc', recipe: 'Honey', sterilization_run_id: null, made_on: '2026-11-18', notes: null, created_at: tick(), updated_at: tick(), deleted_at: null },
+    { id: 'mb-2', account_id: ACCOUNT, code: 'MB-002', kind: 'agar', recipe: 'MEA', sterilization_run_id: 'run-2', recipe_id: 'rc-1', volume_ml: 250, made_on: '2026-11-19', notes: null, created_at: tick(), updated_at: tick(), deleted_at: null },
+    { id: 'mb-3', account_id: ACCOUNT, code: 'MB-003', kind: 'lc', recipe: 'Honey', sterilization_run_id: null, recipe_id: null, volume_ml: null, made_on: '2026-11-18', notes: null, created_at: tick(), updated_at: tick(), deleted_at: null },
   );
   lab.items.find((i) => i.code === 'S-2B')!.media_batch_id = 'mb-2';
   lab.events.push(
@@ -101,6 +106,18 @@ describe('items and lab records', () => {
     expect((await q.listBatches('agar')).map((b) => [b.code, b.sterilization_runs?.code ?? null])).toEqual([['MB-002', 'SR-002']]);
     expect((await q.listBatches(null)).map((b) => b.code)).toEqual(['MB-002', 'MB-003']);
     expect((await q.listRuns()).map((r) => r.code)).toEqual(['SR-002']);
+  });
+
+  it('shows the exact recipe version each batch was made from', async () => {
+    const [mb2, mb3] = await q.listBatches(null);
+    expect([mb2.recipes, mb2.volume_ml]).toEqual([{ name: 'MEA', version: 1 }, 250]);
+    expect(mb3.recipes).toBeNull();
+  });
+
+  it('lists every recipe version with its ingredients', async () => {
+    const all = await q.listRecipes();
+    expect(all.map((r) => `${r.name} v${r.version}`)).toEqual(['MEA v1', 'MEA 2% v2']);
+    expect(all[1].ingredients).toEqual([{ name: 'Malt extract', amount: 10, unit: 'g' }]);
   });
 
   it('lists strains', async () => {

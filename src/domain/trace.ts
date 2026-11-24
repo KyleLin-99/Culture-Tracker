@@ -8,6 +8,7 @@ export const FACTOR_LABEL: Record<TraceFactor, string> = {
   parent: 'Parent culture',
   media_batch: 'Media batch',
   sterilization_run: 'Sterilization run',
+  recipe: 'Recipe',
   made_on: 'Day made',
 };
 

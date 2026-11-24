@@ -186,6 +186,25 @@ suite('offline sync against real Supabase', () => {
     expect(error?.message).toBe('Only notes can be edited or removed');
   });
 
+  it('recipes saved online reach the phone, and batches show the version they used', async () => {
+    const c = lab.client;
+    const v1 = must(await c.rpc('save_recipe', {
+      p_account_id: lab.accountId, p_family_id: null, p_name: 'MEA 2%', p_kind: 'agar', p_volume_ml: 500,
+      p_ingredients: [{ name: 'Malt extract', amount: 10, unit: 'g' }],
+    })) as { id: string; family_id: string };
+    must(await c.rpc('save_recipe', {
+      p_account_id: lab.accountId, p_family_id: v1.family_id, p_name: 'MEA 2%', p_kind: 'agar', p_volume_ml: 1000,
+      p_ingredients: [{ name: 'Malt extract', amount: 20, unit: 'g' }],
+    }));
+    must(await c.from('media_batches').insert({ account_id: lab.accountId, kind: 'agar', recipe_id: v1.id, volume_ml: 250 }));
+
+    const p = await phone();
+    const versions = (await p.q.listRecipes()).filter((r) => r.family_id === v1.family_id);
+    expect(versions.map((r) => [r.version, r.volume_ml, r.ingredients[0].amount])).toEqual([[1, 500, 10], [2, 1000, 20]]);
+    const batch = (await p.q.listBatches('agar')).find((b) => b.recipe_id === v1.id)!;
+    expect([batch.recipes, batch.volume_ml]).toEqual([{ name: 'MEA 2%', version: 1 }, 250]);
+  });
+
   it('another lab sees none of this, and its changes into this lab are refused', async () => {
     const other = await newLab(env as TestEnv, admin, 'Other lab');
     const p = await phone(other);

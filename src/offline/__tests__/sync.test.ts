@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 
 import { localQueries } from '../queries';
-import { getMeta, migrate, SCHEMA_VERSION } from '../schema';
+import { getMeta, migrate, SCHEMA_VERSION, setMeta } from '../schema';
 import type { SqlDb } from '../sql';
-import { OVERLAP_MS, pull } from '../sync';
+import { OVERLAP_MS, pull, upsertRows } from '../sync';
 import { ACCOUNT, builder, emptyLab, fakeRemote, standardLab, STRAIN, tick } from '../testing/fakeLab';
 import { openTestDb } from '../testing/sqljsDb';
 
@@ -135,5 +135,24 @@ describe('schema', () => {
   it('migrates once and is safe to run again', async () => {
     await migrate(db);
     expect((await db.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(SCHEMA_VERSION);
+  });
+
+  it('upgrades a phone already in use: keeps its copy and brings recipes down', async () => {
+    const old = await openTestDb();
+    // A phone on the version before recipes, with a synced copy.
+    await migrate(old, 2);
+    const lab = standardLab();
+    await upsertRows(old, 'items', lab.items.slice(0, 3));
+    await setMeta(old, 'account_id', ACCOUNT);
+    await setMeta(old, 'first_pull_done', '1');
+
+    lab.recipes.push({ id: 'rc-1', account_id: ACCOUNT, family_id: 'f', version: 1, name: 'MEA', kind: 'agar', volume_ml: 500,
+      ingredients: [{ name: 'Agar', amount: 10, unit: 'g' }], steps: null, created_at: tick(), updated_at: tick(), deleted_at: null });
+    await migrate(old);
+    await pull(old, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+
+    expect((await old.first<{ n: number }>('select count(*) as n from items'))!.n).toBe(lab.items.length);
+    expect((await localQueries(old).listRecipes()).map((r) => r.name)).toEqual(['MEA']);
+    old.close();
   });
 });

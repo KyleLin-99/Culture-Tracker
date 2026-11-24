@@ -5,7 +5,9 @@
 // Supabase directly.
 
 import { todayLocal } from '@/domain/cultureCode';
+import { currentRecipes } from '@/domain/recipes';
 import type {
+  Ingredient,
   Item,
   ItemEvent,
   ItemWithRefs,
@@ -14,6 +16,7 @@ import type {
   MediaBatch,
   MediaKind,
   Medium,
+  Recipe,
   Strain,
   SterilizationMethod,
   SterilizationRun,
@@ -279,6 +282,8 @@ export async function strainTree(strainId: string): Promise<TreeRow[]> {
 
 // --- Sterilization runs and media batches --------------------------------
 
+const BATCH_SELECT = '*, sterilization_runs(code), recipes(name, version)';
+
 export async function listRuns(limit = 30): Promise<SterilizationRun[]> {
   const local = await localReader();
   if (local) return local.listRuns(limit);
@@ -324,7 +329,7 @@ export async function listBatches(kind?: MediaKind | null, limit = 30): Promise<
   if (local) return local.listBatches(kind, limit);
   let q = supabase
     .from('media_batches')
-    .select('*, sterilization_runs(code)')
+    .select(BATCH_SELECT)
     .is('deleted_at', null)
     .order('made_on', { ascending: false })
     .order('created_at', { ascending: false })
@@ -338,6 +343,8 @@ export async function createBatch(args: {
   kind: MediaKind;
   recipe?: string;
   runId?: string | null;
+  recipeId?: string | null;
+  volumeMl?: number | null;
   madeOn?: string;
 }): Promise<MediaBatch> {
   const out = unwrap<MediaBatch>(
@@ -348,13 +355,69 @@ export async function createBatch(args: {
         kind: args.kind,
         recipe: args.recipe?.trim() || null,
         sterilization_run_id: args.runId ?? null,
+        recipe_id: args.recipeId ?? null,
+        volume_ml: args.volumeMl ?? null,
         made_on: args.madeOn ?? todayLocal(),
       })
-      .select('*, sterilization_runs(code)')
+      .select(BATCH_SELECT)
       .single(),
   );
   await afterWrite();
   return out;
+}
+
+// --- Recipes ------------------------------------------------------------------
+// Saved online (like batches); phones keep a read-only copy for pickers and labels.
+
+async function allRecipes(): Promise<Recipe[]> {
+  const local = await localReader();
+  if (local) return local.listRecipes();
+  return unwrap(await supabase.from('recipes').select('*').order('name').order('version'));
+}
+
+/** The newest version of each recipe in use, by name; optionally only one kind. */
+export async function listRecipes(kind?: MediaKind | null): Promise<Recipe[]> {
+  return currentRecipes(await allRecipes()).filter((r) => !kind || r.kind === kind);
+}
+
+/** Every version of one recipe, newest first. */
+export async function recipeVersions(familyId: string): Promise<Recipe[]> {
+  const local = await localReader();
+  const rows = local
+    ? (await local.listRecipes()).filter((r) => r.family_id === familyId)
+    : unwrap<Recipe[]>(await supabase.from('recipes').select('*').eq('family_id', familyId));
+  return [...rows].sort((a, b) => b.version - a.version);
+}
+
+/** Saves a new recipe (no familyId) or the next version of one. */
+export async function saveRecipe(args: {
+  accountId: string;
+  familyId?: string | null;
+  name: string;
+  kind: MediaKind;
+  volumeMl: number;
+  ingredients: Ingredient[];
+  steps?: string;
+}): Promise<Recipe> {
+  const out = unwrap<Recipe>(
+    await supabase.rpc('save_recipe', {
+      p_account_id: args.accountId,
+      p_family_id: args.familyId ?? null,
+      p_name: args.name,
+      p_kind: args.kind,
+      p_volume_ml: args.volumeMl,
+      p_ingredients: args.ingredients,
+      p_steps: args.steps?.trim() || null,
+    }),
+  );
+  await afterWrite();
+  return out;
+}
+
+/** Hides a recipe (every version) from pickers; batches keep pointing at it. */
+export async function archiveRecipe(familyId: string): Promise<void> {
+  unwrap(await supabase.rpc('archive_recipe', { p_family_id: familyId }));
+  await afterWrite();
 }
 
 // --- Contamination trace ---------------------------------------------------
