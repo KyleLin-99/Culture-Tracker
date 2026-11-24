@@ -79,7 +79,7 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
   return (
     <View style={{ gap: space.xs }}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput placeholderTextColor={colors.muted} style={styles.input} {...props} />
+      <TextInput accessibilityLabel={label} placeholderTextColor={colors.muted} style={styles.input} {...props} />
     </View>
   );
 }
@@ -150,6 +150,20 @@ export function Card({ children, onPress }: { children: ReactNode; onPress?: () 
     );
   }
   return <View style={styles.card}>{children}</View>;
+}
+
+/** Text that takes you somewhere: "‹ All strains", "Blue Oyster ›". Full tap height for gloved hands. */
+export function LinkText({ title, onPress }: { title: string; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="link"
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => [{ minHeight: 40, justifyContent: 'center', alignSelf: 'flex-start' }, pressed && { opacity: 0.6 }]}
+    >
+      <Text style={{ color: colors.primary, fontSize: font.body, fontWeight: '600' }}>{title}</Text>
+    </Pressable>
+  );
 }
 
 export function StatusPill({ status, label }: { status: string; label: string }) {

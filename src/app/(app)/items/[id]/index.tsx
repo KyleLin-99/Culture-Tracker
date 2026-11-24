@@ -5,10 +5,10 @@ import { Text, View } from 'react-native';
 import { useMembership } from '@/auth/AuthProvider';
 import { labelDate, MAX_CODE_LENGTH, MEDIUM_LABEL, roomLeft, STATUS_LABEL } from '@/domain/cultureCode';
 import type { Item, ItemStatus, Medium } from '@/domain/types';
-import { addNote, createBackups, getItem, itemEvents, itemLineage, setItemStatus } from '@/lib/api';
+import { addNote, changeNote, createBackups, getItem, itemEvents, itemLineage, setItemStatus } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
-import { Button, Card, Choices, ErrorText, Field, Muted, Screen, SectionTitle, StatusPill, Stepper, styles } from '@/ui/components';
+import { Button, Card, Choices, ErrorText, Field, LinkText, Muted, Screen, SectionTitle, StatusPill, Stepper, styles } from '@/ui/components';
 import { colors, font, space } from '@/ui/theme';
 import { TreeList } from '@/ui/TreeList';
 
@@ -34,6 +34,9 @@ export default function ItemDetail() {
   const [newBackups, setNewBackups] = useState<Item[] | null>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  // Note being edited (with its draft text) or waiting for "remove?" confirmation.
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const i = item.data;
@@ -45,6 +48,8 @@ export default function ItemDetail() {
       await action();
       if (!keepPanel) setPanel(null);
       setText('');
+      setEditing(null);
+      setRemoving(null);
       await Promise.all([item.reload(), lineage.reload(), events.reload()]);
       after?.();
     } catch (e) {
@@ -76,6 +81,12 @@ export default function ItemDetail() {
   return (
     <Screen>
       <Stack.Screen options={{ title: i.code }} />
+      {i.strains?.name ? (
+        <LinkText
+          title={`‹ ${i.strains.name}`}
+          onPress={() => router.dismissTo({ pathname: '/strains/[id]', params: { id: i.strain_id } })}
+        />
+      ) : null}
 
       {/* What goes on the label */}
       <Card>
@@ -205,11 +216,73 @@ export default function ItemDetail() {
       <View style={{ gap: space.sm }}>
         {events.data?.map((e) => (
           <Card key={e.id}>
-            <Text style={styles.body}>{e.note ?? e.type}</Text>
-            <Muted>
-              {new Date(e.occurred_at).toLocaleString()}
-              {e.contam_type ? ` · ${e.contam_type}` : ''}
-            </Muted>
+            {editing?.id === e.id ? (
+              <>
+                <Field
+                  label="Edit note"
+                  value={editing.text}
+                  onChangeText={(t) => setEditing({ id: e.id, text: t })}
+                  multiline
+                  autoFocus
+                />
+                <View style={[styles.row, { gap: space.sm }]}>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      title="Save"
+                      busy={busy}
+                      disabled={!editing.text.trim()}
+                      onPress={() => run(() => changeNote(e.id, editing.text))}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Button title="Cancel" variant="secondary" onPress={() => setEditing(null)} />
+                  </View>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.body}>{e.note ?? e.type}</Text>
+                <Muted>
+                  {new Date(e.occurred_at).toLocaleString()}
+                  {e.contam_type ? ` · ${e.contam_type}` : ''}
+                </Muted>
+              </>
+            )}
+
+            {/* Only notes can change; transfers, backups and status changes are a fixed record. */}
+            {e.type === 'note' && editing?.id !== e.id && removing !== e.id && (
+              <View style={[styles.row, { gap: space.lg }]}>
+                <LinkText
+                  title="Edit"
+                  onPress={() => {
+                    setError(null);
+                    setRemoving(null);
+                    setEditing({ id: e.id, text: e.note ?? '' });
+                  }}
+                />
+                <LinkText
+                  title="Remove"
+                  onPress={() => {
+                    setError(null);
+                    setEditing(null);
+                    setRemoving(e.id);
+                  }}
+                />
+              </View>
+            )}
+            {removing === e.id && (
+              <View style={{ gap: space.sm }}>
+                <Muted>Remove this note?</Muted>
+                <View style={[styles.row, { gap: space.sm }]}>
+                  <View style={{ flex: 1 }}>
+                    <Button title="Remove note" variant="danger" busy={busy} onPress={() => run(() => changeNote(e.id, null))} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Button title="Keep" variant="secondary" onPress={() => setRemoving(null)} />
+                  </View>
+                </View>
+              </View>
+            )}
           </Card>
         ))}
       </View>

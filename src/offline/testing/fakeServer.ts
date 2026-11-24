@@ -112,6 +112,21 @@ export function fakeServer(lab: FakeLab) {
       lab.strains.push(row);
       return { ...row };
     },
+    async editNote(op) {
+      // Same rules as edit_note() in supabase/migrations/*_note_edits.sql.
+      offline();
+      const e = lab.events.find((x) => x.id === op.event_id);
+      if (!e) throw new Error('Note not found');
+      if (e.type !== 'note') throw new Error('Only notes can be edited or removed');
+      if (op.remove) {
+        if (!e.deleted_at) Object.assign(e, { deleted_at: tick(), updated_at: tick() });
+        return { ...e };
+      }
+      if (!op.note?.trim()) throw new Error("A note can't be empty");
+      if (e.deleted_at) throw new Error('This note was removed');
+      Object.assign(e, { note: op.note.trim(), updated_at: tick() });
+      return { ...e };
+    },
     async resolveRelabel(id, at) {
       offline();
       const r = lab.relabels.find((x) => x.id === id);

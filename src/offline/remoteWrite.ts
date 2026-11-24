@@ -50,6 +50,12 @@ export const createWriteRemote = (supabase: SupabaseClient): WriteRemote => ({
     return rows[0] ?? null;
   },
 
+  async editNote(op) {
+    return unwrap(
+      await supabase.rpc('edit_note', { p_id: op.event_id, p_note: op.note, p_delete: op.remove }),
+    ) as RemoteRow;
+  },
+
   async resolveRelabel(id, resolvedAt) {
     return unwrap(
       await supabase.from('relabels').update({ resolved_at: resolvedAt }).eq('id', id).select().maybeSingle(),

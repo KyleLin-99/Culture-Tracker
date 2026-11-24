@@ -35,7 +35,17 @@ export type OutboxOp =
     }
   | { op: 'event'; summary: string; event: LocalEvent }
   | { op: 'strain'; summary: string; strain: { id: string; account_id: string; name: string; species: string | null } }
-  | { op: 'resolve_relabel'; summary: string; id: string; resolved_at: string };
+  | { op: 'resolve_relabel'; summary: string; id: string; resolved_at: string }
+  | {
+      op: 'note';
+      summary: string;
+      event_id: string;
+      /** New text, or null when the note is being removed. */
+      note: string | null;
+      remove: boolean;
+      prev_note: string | null;
+      prev_deleted_at: string | null;
+    };
 
 /** How queued changes reach the server: Supabase in the app (remoteWrite.ts), a fake in tests. */
 export interface WriteRemote {
@@ -44,11 +54,30 @@ export interface WriteRemote {
   applyStatus(op: Extract<OutboxOp, { op: 'status' }>): Promise<RemoteRow>;
   insertStrain(strain: Extract<OutboxOp, { op: 'strain' }>['strain']): Promise<RemoteRow | null>;
   resolveRelabel(id: string, resolvedAt: string): Promise<RemoteRow | null>;
+  editNote(op: Extract<OutboxOp, { op: 'note' }>): Promise<RemoteRow>;
 }
 
 type OutboxRow = { seq: number; op: string; payload: string; status: string; error: string | null; created_at: string };
 
 export type FailedChange = { seq: number; summary: string; error: string; created_at: string };
+
+/** A queued change that hasn't been sent yet. */
+export type QueuedChange = { seq: number; change: OutboxOp };
+
+export async function pendingChanges(db: SqlDb, op: OutboxOp['op']): Promise<QueuedChange[]> {
+  const rows = await db.all<OutboxRow>("select * from outbox where status = 'pending' and op = ? order by seq", [op]);
+  return rows.map((r) => ({ seq: r.seq, change: parse(r) }));
+}
+
+/** Rewrites a queued change before it's sent (e.g. a note edited again while still offline). */
+export async function replaceQueued(db: SqlDb, seq: number, op: OutboxOp): Promise<void> {
+  const { op: _name, ...payload } = op;
+  await db.run("update outbox set payload = ? where seq = ? and status = 'pending'", [JSON.stringify(payload), seq]);
+}
+
+export async function dropQueued(db: SqlDb, seq: number): Promise<void> {
+  await db.run("delete from outbox where seq = ? and status = 'pending'", [seq]);
+}
 
 export async function enqueue(db: SqlDb, op: OutboxOp, now: string): Promise<void> {
   const { op: name, ...payload } = op;
@@ -99,6 +128,9 @@ async function send(db: SqlDb, remote: WriteRemote, op: OutboxOp): Promise<void>
       if (row) await upsertRows(db, 'relabels', [row], true);
       return;
     }
+    case 'note':
+      await upsertRows(db, 'events', [await remote.editNote(op)], true);
+      return;
   }
 }
 
@@ -124,6 +156,8 @@ function dependsOn(op: OutboxOp, ids: Set<string>): boolean {
       return ids.has(op.item_id);
     case 'event':
       return ids.has(op.event.item_id);
+    case 'note':
+      return ids.has(op.event_id);
     default:
       return false;
   }
@@ -154,6 +188,13 @@ async function undo(db: SqlDb, op: OutboxOp): Promise<void> {
       return;
     case 'resolve_relabel':
       await db.run('update relabels set resolved_at = null, local_pending = 0 where id = ?', [op.id]);
+      return;
+    case 'note':
+      await db.run('update events set note = ?, deleted_at = ?, local_pending = 0 where id = ?', [
+        op.prev_note,
+        op.prev_deleted_at,
+        op.event_id,
+      ]);
       return;
   }
 }

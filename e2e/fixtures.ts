@@ -68,6 +68,14 @@ export function seedRecords() {
   return { runs: [run] as Record<string, unknown>[], batches: [batch] as Record<string, unknown>[] };
 }
 
+/** TBG-2's history: a transfer (fixed) and a note (editable). */
+export function seedEvents(): Record<string, unknown>[] {
+  return [
+    { id: 'ev-transfer', account_id: ACCOUNT_ID, item_id: 't-2', type: 'transferred', note: '1 × agar: TBG-2A', contam_type: null, occurred_at: `${MADE_ON}T12:00:00Z`, deleted_at: null },
+    { id: 'ev-note', account_id: ACCOUNT_ID, item_id: 't-2', type: 'note', note: 'Slow growth', contam_type: null, occurred_at: `${MADE_ON}T13:00:00Z`, deleted_at: null },
+  ];
+}
+
 /** What contamination_trace() returns in the screen tests (the SR-002 example). */
 export const TRACE_ROWS = [
   { factor: 'media_batch', factor_id: 'mb-2', label: 'MB-002', contaminated_with: 4, clean_with: 1, contaminated_total: 5, clean_total: 12, rate_with: 0.8, rate_without: 0.083, relative_risk: 9.6, p_value: 0.00986 },
@@ -79,6 +87,8 @@ export type Lab = {
   items: Row[];
   runs: Record<string, unknown>[];
   batches: Record<string, unknown>[];
+  /** History entries (notes, transfers…) by item. */
+  events: Record<string, unknown>[];
   /** Plates to relabel after an offline code conflict. */
   relabels: Record<string, unknown>[];
   /** Every insert the app made: table and request body. */
@@ -110,7 +120,17 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (single && id) return json(lab.items.find((i) => i.id === id) ?? {}, lab.items.some((i) => i.id === id) ? 200 : 406);
       return json([...lab.items].reverse());
     }
-    if (path.startsWith('/rest/v1/events')) return json([]);
+    if (path.startsWith('/rest/v1/events')) {
+      if (req.method() === 'POST') {
+        const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
+        lab.inserts.push({ table: 'events', body });
+        const row = { id: `ev-${lab.events.length + 1}`, occurred_at: new Date().toISOString(), contam_type: null, deleted_at: null, ...body };
+        lab.events.push(row);
+        return json(single ? row : [row], 201);
+      }
+      const itemId = url.searchParams.get('item_id')?.replace(/^eq\./, '');
+      return json(lab.events.filter((e) => e.item_id === itemId && !e.deleted_at).reverse());
+    }
     if (path.startsWith('/rest/v1/relabels')) {
       if (req.method() === 'PATCH') {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
@@ -154,6 +174,13 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
+      if (fn === 'edit_note') {
+        const e = lab.events.find((x) => x.id === body.p_id);
+        if (!e) return json({ message: 'Note not found' }, 400);
+        if (body.p_delete) e.deleted_at = new Date().toISOString();
+        else e.note = body.p_note;
+        return json(e);
+      }
       if (fn === 'lookup_code') {
         const q = String(body.p_query);
         return json(
@@ -186,7 +213,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

@@ -190,3 +190,86 @@ describe('pulls', () => {
     expect((await localQueries(db).getItem('id-S-3')).status).toBe('contaminated');
   });
 });
+
+describe('editing and removing notes', () => {
+  const notes = async (itemId: string) =>
+    (await localQueries(db).itemEvents(itemId)).filter((e) => e.type === 'note').map((e) => e.note);
+  const serverNote = (id: string) => lab.events.find((e) => e.id === id);
+
+  it('edits and removes a synced note, offline first, then on the server', async () => {
+    await writer.addNote(ACCOUNT, 'id-S-2', 'Slow growth');
+    await sync();
+    const id = 'new-1';
+    expect(serverNote(id)?.note).toBe('Slow growth');
+
+    server.state.online = false;
+    await writer.changeNote(id, '  Fast, rhizomorphic ');
+    expect(await notes('id-S-2')).toEqual(['Fast, rhizomorphic']);
+    await sync();
+    expect(serverNote(id)?.note).toBe('Slow growth'); // still offline
+
+    server.state.online = true;
+    await sync();
+    expect(serverNote(id)?.note).toBe('Fast, rhizomorphic');
+
+    await writer.changeNote(id, null);
+    expect(await notes('id-S-2')).toEqual([]);
+    await sync();
+    expect(serverNote(id)?.deleted_at).toBeTruthy();
+    expect(await notes('id-S-2')).toEqual([]);
+    expect(await pendingCount(db)).toBe(0);
+  });
+
+  it('changes a note still waiting to be sent instead of queueing an edit', async () => {
+    server.state.online = false;
+    await writer.addNote(ACCOUNT, 'id-S-2', 'Slow');
+    await writer.changeNote('new-1', 'Slow, then fast');
+    expect(await pendingCount(db)).toBe(1);
+
+    server.state.online = true;
+    await sync();
+    expect(serverNote('new-1')?.note).toBe('Slow, then fast');
+  });
+
+  it('drops an unsent note that is removed, so the server never sees it', async () => {
+    server.state.online = false;
+    await writer.addNote(ACCOUNT, 'id-S-2', 'Oops, wrong plate');
+    await writer.changeNote('new-1', null);
+    expect(await pendingCount(db)).toBe(0);
+    expect(await notes('id-S-2')).toEqual([]);
+
+    server.state.online = true;
+    await sync();
+    expect(serverNote('new-1')).toBeUndefined();
+  });
+
+  it('refuses to change history other than notes, and empty notes', async () => {
+    const { ids } = await writer.createTransfers({ parentId: 'id-S-2', count: 1, medium: 'agar', madeOn: '2026-11-23' });
+    const transferEvent = (await localQueries(db).itemEvents('id-S-2')).find((e) => e.type === 'transferred')!;
+    await expect(writer.changeNote(transferEvent.id, 'changed')).rejects.toThrow('Only notes can be edited or removed');
+
+    await writer.addNote(ACCOUNT, ids[0], 'Looks clean');
+    const note = (await localQueries(db).itemEvents(ids[0])).find((e) => e.type === 'note')!;
+    await expect(writer.changeNote(note.id, '   ')).rejects.toThrow("A note can't be empty");
+  });
+
+  it('puts the note back when the server refuses the edit', async () => {
+    await writer.addNote(ACCOUNT, 'id-S-2', 'Slow growth');
+    await sync();
+
+    server.state.online = false;
+    await writer.changeNote('new-1', 'Edited on this phone');
+    // Meanwhile the note was removed on another device.
+    Object.assign(serverNote('new-1')!, { deleted_at: '2026-11-23T13:00:00.000Z', updated_at: '2026-11-30T00:00:00.000Z' });
+    server.state.online = true;
+    await flush(db, server.remote);
+
+    expect(await notes('id-S-2')).toEqual(['Slow growth']);
+    expect((await failedChanges(db)).map((f) => [f.summary, f.error])).toEqual([
+      ['Edited note on S-2', 'This note was removed'],
+    ]);
+    // The next pull brings the removal down.
+    await sync();
+    expect(await notes('id-S-2')).toEqual([]);
+  });
+});
