@@ -32,6 +32,15 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
+  # The lab's MCP server (its own package).
+  - package-ecosystem: npm
+    directory: /mcp-server
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      mcp-server:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

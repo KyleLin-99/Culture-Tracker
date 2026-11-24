@@ -112,6 +112,9 @@ database tests locally).
    lineage, transfers, backups, status changes and notes all work with no
    signal and sync when you're back online. If another device used a code
    first, the home screen asks you to relabel the plate (S-2C → S-2D).
+12. **Ask Claude about your lab** (optional): the read-only MCP server in
+   `mcp-server/` lets Claude answer "trace S-3B" or "contamination by run this
+   month" from your data. Setup: [mcp-server/README.md](mcp-server/README.md).
 
 ## Project layout
 
