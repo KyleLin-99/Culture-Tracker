@@ -230,6 +230,20 @@ export async function addNote(accountId: string, itemId: string, note: string): 
   await afterWrite();
 }
 
+/** Edits a note's text, or removes the note when `text` is null. Only notes can change. */
+export async function changeNote(eventId: string, text: string | null): Promise<void> {
+  const w = await localWriter();
+  if (w) {
+    await w.changeNote(eventId, text);
+    await syncNow();
+    return;
+  }
+  unwrap(
+    await supabase.rpc('edit_note', { p_id: eventId, p_note: text?.trim() ?? null, p_delete: text === null }),
+  );
+  await afterWrite();
+}
+
 export async function itemEvents(itemId: string): Promise<ItemEvent[]> {
   const local = await localReader();
   if (local) return local.itemEvents(itemId);

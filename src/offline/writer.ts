@@ -3,7 +3,7 @@
 
 import type { Item, Medium } from '@/domain/types';
 
-import { enqueue, type LocalEvent } from './outbox';
+import { dropQueued, enqueue, type LocalEvent, pendingChanges, replaceQueued } from './outbox';
 import { planBackups, planOrigin, planTransfers, type PlannedItem } from './planner';
 import type { SqlDb } from './sql';
 
@@ -132,6 +132,62 @@ export function localWriter(deps: WriterDeps) {
       await db.transaction(async () => {
         await insertEvent(deps, accountId, event);
         await enqueue(db, { op: 'event', summary: `Note on ${item?.code ?? 'a culture'}`, event }, at);
+      });
+    },
+
+    /** Changes a note's text, or removes it when `text` is null. Other history can't be changed. */
+    async changeNote(eventId: string, text: string | null): Promise<void> {
+      const e = await db.first<{ type: string; note: string | null; deleted_at: string | null; item_code: string | null }>(
+        `select e.type, e.note, e.deleted_at, i.code as item_code
+         from events e left join items i on i.id = e.item_id where e.id = ?`,
+        [eventId],
+      );
+      // Same messages as edit_note() on the server.
+      if (!e) throw new Error('Note not found');
+      if (e.type !== 'note') throw new Error('Only notes can be edited or removed');
+      const remove = text === null;
+      const clean = text?.trim() ?? null;
+      if (!remove && !clean) throw new Error("A note can't be empty");
+      if (e.deleted_at) {
+        if (remove) return;
+        throw new Error('This note was removed');
+      }
+      const at = deps.now();
+
+      await db.transaction(async () => {
+        // Still waiting to be sent? Change (or drop) the queued note instead of queueing an edit.
+        const queued = (await pendingChanges(db, 'event')).find(
+          (q) => q.change.op === 'event' && q.change.event.id === eventId,
+        );
+        if (queued && queued.change.op === 'event') {
+          if (remove) {
+            await dropQueued(db, queued.seq);
+            await db.run('delete from events where id = ? and local_pending = 1', [eventId]);
+          } else {
+            await replaceQueued(db, queued.seq, { ...queued.change, event: { ...queued.change.event, note: clean } });
+            await db.run('update events set note = ? where id = ?', [clean, eventId]);
+          }
+          return;
+        }
+
+        await db.run('update events set note = ?, deleted_at = ?, local_pending = 1 where id = ?', [
+          remove ? e.note : clean,
+          remove ? at : null,
+          eventId,
+        ]);
+        await enqueue(
+          db,
+          {
+            op: 'note',
+            summary: `${remove ? 'Removed' : 'Edited'} note on ${e.item_code ?? 'a culture'}`,
+            event_id: eventId,
+            note: remove ? null : clean,
+            remove,
+            prev_note: e.note,
+            prev_deleted_at: e.deleted_at,
+          },
+          at,
+        );
       });
     },
 

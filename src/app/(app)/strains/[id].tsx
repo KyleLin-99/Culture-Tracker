@@ -8,7 +8,7 @@ import type { Medium } from '@/domain/types';
 import { createOrigin, getStrain, strainTree } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
-import { Button, Choices, ErrorText, Field, Muted, Screen, SectionTitle } from '@/ui/components';
+import { Button, Choices, ErrorText, Field, LinkText, Muted, Screen, SectionTitle } from '@/ui/components';
 import { colors, font } from '@/ui/theme';
 import { TreeList } from '@/ui/TreeList';
 
@@ -60,6 +60,7 @@ export default function StrainDetail() {
   return (
     <Screen>
       <Stack.Screen options={{ title: strain.data?.name ?? 'Strain' }} />
+      <LinkText title="‹ All strains" onPress={() => router.dismissTo('/strains')} />
       {strain.data?.species ? (
         <Text style={{ fontSize: font.body, color: colors.muted, fontStyle: 'italic' }}>{strain.data.species}</Text>
       ) : null}

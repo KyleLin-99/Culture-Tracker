@@ -1,10 +1,16 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
+import { View } from 'react-native';
 
 import { useMembership } from '@/auth/AuthProvider';
 import { startSync } from '@/offline/engine';
+import { HomeButton } from '@/ui/HomeButton';
 import { SyncIndicator } from '@/ui/SyncIndicator';
-import { colors } from '@/ui/theme';
+import { colors, space } from '@/ui/theme';
+
+// Home always sits under every other screen, so a page opened from a link or
+// a refresh on web still has a way back.
+export const unstable_settings = { initialRouteName: 'index' };
 
 export default function AppLayout() {
   const { account_id, initials } = useMembership();
@@ -25,14 +31,19 @@ export default function AppLayout() {
 
   return (
     <Stack
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerStyle: { backgroundColor: colors.bg },
         headerTintColor: colors.text,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.bg },
         headerBackTitle: 'Back',
-        headerRight: () => <SyncIndicator />,
-      }}
+        headerRight: () => (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+            <SyncIndicator />
+            {route.name !== 'index' && <HomeButton />}
+          </View>
+        ),
+      })}
     >
       <Stack.Screen name="index" options={{ title: 'Culture Tracker' }} />
       <Stack.Screen name="strains/index" options={{ title: 'Strains' }} />

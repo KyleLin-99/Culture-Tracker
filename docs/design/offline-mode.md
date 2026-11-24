@@ -74,7 +74,7 @@ Sharing a lab with other people (roles: owner, tech, viewer) comes after this. S
 
 ## What step 2 does (built)
 
-- **Saving on the phone:** transfers, backups, new origins, status changes, notes and new strains are applied to the local copy at once and queued in an `outbox` table. Codes are planned locally (`src/offline/planner.ts`) with the same rules as the database, including the 20-character limit.
+- **Saving on the phone:** transfers, backups, new origins, status changes, notes (including edits and removals) and new strains are applied to the local copy at once and queued in an `outbox` table. Editing or removing a note that hasn't been sent yet changes the queued note instead of queueing a second change, so a removed unsent note never reaches the server. Codes are planned locally (`src/offline/planner.ts`) with the same rules as the database, including the 20-character limit.
 - **Sending:** each sync sends the queue in order before pulling. Every change carries ids made on the phone, and the server functions (`apply_items`, `apply_status`, `apply_event`) ignore a change they've already applied, so a retry after a dropped connection never duplicates anything. Pulls never overwrite a change still waiting to be sent.
 - **Conflicts:** if another device already used a position, `apply_items` takes the next free one and writes a `relabels` row (old code → new code). Children follow their renumbered parent. The home screen lists them under **Relabel these plates** until you tap Done (on phone or web).
 - **Refusals:** if the server rejects a change, it's undone on the phone along with any queued change that builds on it, and listed under **Couldn't save** with the reason until dismissed.

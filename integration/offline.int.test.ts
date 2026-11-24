@@ -164,6 +164,28 @@ suite('offline sync against real Supabase', () => {
     expect(rows).toEqual([{ name: 'Lion’s Mane' }]);
   });
 
+  it('notes edited and removed on a phone reach the server, and other history stays fixed', async () => {
+    const p = await phone();
+    const s1 = await serverId('S-1');
+    await p.writer.addNote(lab.accountId, s1, 'Slow growth');
+    await p.sync();
+    const note = (await p.q.itemEvents(s1)).find((e) => e.type === 'note')!;
+
+    await p.writer.changeNote(note.id, 'Fast, rhizomorphic');
+    await p.sync();
+    expect((await admin.query('select note from events where id = $1', [note.id])).rows[0].note).toBe('Fast, rhizomorphic');
+
+    await p.writer.changeNote(note.id, null);
+    await p.sync();
+    expect((await admin.query('select deleted_at from events where id = $1', [note.id])).rows[0].deleted_at).not.toBeNull();
+    expect((await p.q.itemEvents(s1)).some((e) => e.id === note.id)).toBe(false);
+
+    // The server refuses edits to automatic history, even straight through the API.
+    const transfer = (await admin.query("select id from events where item_id = $1 and type = 'transferred'", [await serverId('S-2')])).rows[0].id;
+    const { error } = await lab.client.rpc('edit_note', { p_id: transfer, p_note: 'changed' });
+    expect(error?.message).toBe('Only notes can be edited or removed');
+  });
+
   it('another lab sees none of this, and its changes into this lab are refused', async () => {
     const other = await newLab(env as TestEnv, admin, 'Other lab');
     const p = await phone(other);
