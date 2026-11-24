@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { WriteRemote } from './outbox';
 import type { RemoteRow } from './tables';
@@ -10,7 +10,7 @@ function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
 
 // Sends queued phone changes through the idempotent server functions in
 // supabase/migrations/*_offline_writes.sql.
-export const supabaseWrite: WriteRemote = {
+export const createWriteRemote = (supabase: SupabaseClient): WriteRemote => ({
   async applyItems(items) {
     // generation and origin_number are worked out by the server; don't send them.
     const payload = items.map(({ generation: _g, origin_number: _o, ...rest }) => rest);
@@ -55,4 +55,4 @@ export const supabaseWrite: WriteRemote = {
       await supabase.from('relabels').update({ resolved_at: resolvedAt }).eq('id', id).select().maybeSingle(),
     ) as RemoteRow | null;
   },
-};
+});

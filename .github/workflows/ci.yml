@@ -58,6 +58,39 @@ jobs:
         if: always()
         run: npx supabase stop --no-backup
 
+  integration:
+    name: Integration (real Supabase API)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Database, API gateway, REST API and Auth: what the app talks to.
+      - name: Start Supabase
+        run: npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Connection settings found
+        run: npx supabase status -o json | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>console.log(Object.keys(JSON.parse(s.slice(s.indexOf("{")))).join(", ")))'
+      - name: Phone sync and offline queue against the real API
+        run: npm run test:integration
+      - run: npx playwright install --with-deps chromium
+      - name: Screens against the real API
+        run: npm run test:e2e:real
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report-real
+          path: |
+            playwright-report-real/
+            test-results/
+          retention-days: 14
+      - name: Stop Supabase
+        if: always()
+        run: npx supabase stop --no-backup
+
   screens:
     name: Web build + screen tests
     runs-on: ubuntu-latest

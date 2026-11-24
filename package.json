@@ -25,12 +25,14 @@
   "devDependencies": {
     "@jest/globals": "^30.5.2",
     "@playwright/test": "1.65.1",
+    "@types/pg": "^8.23.1",
     "@types/react": "~19.3.0",
     "@types/sql.js": "^1.16.0",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~58.0.4",
     "jest": "^30.5.2",
     "jest-expo": "~58.0.14",
+    "pg": "^8.23.1",
     "sql.js": "^1.17.0",
     "supabase": "^3.2.0",
     "typescript": "~6.0.3"
@@ -46,14 +48,18 @@
     "test:db": "supabase test db",
     "test:e2e": "node e2e/build-web.mjs && playwright test",
     "check": "npm run typecheck && npm run lint && npm test",
-    "db:types": "supabase gen types typescript --linked > src/lib/database.types.ts"
+    "db:types": "supabase gen types typescript --linked > src/lib/database.types.ts",
+    "test:integration": "jest -c jest.integration.config.js",
+    "test:e2e:real": "node e2e-real/build.mjs && playwright test -c playwright.real.config.ts"
   },
   "private": true,
   "jest": {
     "preset": "jest-expo",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/e2e/"
+      "/e2e/",
+      "/e2e-real/",
+      "/integration/"
     ]
   }
 }

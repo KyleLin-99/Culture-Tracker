@@ -134,6 +134,8 @@ supabase/
 | `npm run check` | types, lint, unit tests (run before every push) |
 | `npm run test:db` | 99 pgTAP database tests (needs Docker Desktop and `npx supabase start`) |
 | `npm run test:e2e` | web build + Playwright screen tests against a mocked backend |
+| `npm run test:integration` | the phone's sync and offline queue against a real local Supabase (needs `npx supabase start`) |
+| `npm run test:e2e:real` | screen tests against a real local Supabase (needs `npx supabase start`) |
 
 GitHub Actions runs all of them on every pull request, every push to `main` and
 daily. See `docs/TESTING.md` for which layer a new test belongs in, and

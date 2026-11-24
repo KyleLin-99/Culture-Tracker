@@ -1,11 +1,12 @@
-import { supabase } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { RemoteSource } from './sync';
 import { TABLES, type RemoteRow, type TableName } from './tables';
 
 // Pulls from Supabase. Row-level security already limits every query to the
-// signed-in member's lab.
-export const supabaseRemote: RemoteSource = {
+// signed-in member's lab. Takes the client so integration tests can sign in
+// as different test users.
+export const createRemote = (supabase: SupabaseClient): RemoteSource => ({
   async changed(table, { since, historyFrom, offset, limit }) {
     let q = supabase
       .from(table)
@@ -30,4 +31,4 @@ export const supabaseRemote: RemoteSource = {
     }
     return out;
   },
-};
+});

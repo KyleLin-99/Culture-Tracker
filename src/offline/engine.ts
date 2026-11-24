@@ -3,12 +3,13 @@ import * as Crypto from 'expo-crypto';
 import { AppState } from 'react-native';
 
 import { daysAgoLocal } from '@/domain/cultureCode';
+import { supabase } from '@/lib/supabase';
 
 import { openLocalDb } from './openDb';
 import { dismissFailed, failedChanges, flush, pendingCount, type FailedChange } from './outbox';
 import { localQueries, type LocalQueries } from './queries';
-import { supabaseRemote } from './remote';
-import { supabaseWrite } from './remoteWrite';
+import { createRemote } from './remote';
+import { createWriteRemote } from './remoteWrite';
 import { clearAll, getMeta, migrate } from './schema';
 import type { SqlDb } from './sql';
 import { isNetworkError, setSyncStatus } from './status';
@@ -21,6 +22,8 @@ import { localWriter as makeWriter, type LocalWriter } from './writer';
 /** First pull keeps a year of history (plus every active culture and its ancestry). */
 export const HISTORY_DAYS = 365;
 const SYNC_EVERY_MS = 2 * 60 * 1000;
+const supabaseRemote = createRemote(supabase);
+const supabaseWrite = createWriteRemote(supabase);
 
 let dbPromise: Promise<SqlDb | null> | null = null;
 let accountId: string | null = null;
