@@ -47,10 +47,45 @@ const PAGE: Record<LabelSize, { page: string; w: string; h: string; sheet: boole
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** What goes on each label: everything, or just the QR code (small stickers, lids, tube sides). */
+export type LabelContent = 'full' | 'qr';
+
+/** Labels on one letter sheet (Avery 5160: 3 across, 10 down). */
+export const SHEET_LABELS = 30;
+
+export const isSheet = (size: LabelSize) => PAGE[size].sheet;
+
+/**
+ * Copies of each culture's label, next to each other (S-1, S-1, S-2, S-2).
+ * 'fill' fills the rest of one letter sheet (from `startAt`) evenly, at least one each.
+ */
+export function withCopies(labels: LabelData[], copies: number | 'fill', startAt = 1): LabelData[] {
+  if (!labels.length) return [];
+  const each =
+    copies === 'fill'
+      ? Math.max(1, Math.floor((SHEET_LABELS - (startAt - 1)) / labels.length))
+      : Math.max(1, Math.floor(copies));
+  return labels.flatMap((l) => Array.from({ length: each }, () => l));
+}
+
 /** A print-ready HTML document: one label per page on Brother rolls, 3 × 10 on a letter sheet. */
-export function labelsHtml(labels: LabelData[], size: LabelSize): string {
+export function labelsHtml(
+  labels: LabelData[],
+  size: LabelSize,
+  opts: { content?: LabelContent; startAt?: number } = {},
+): string {
+  const content = opts.content ?? 'full';
   const p = PAGE[size];
-  const label = (l: LabelData) => `
+  // On a part-used sheet, leave the used positions blank.
+  const skip = p.sheet ? Math.min(SHEET_LABELS - 1, Math.max(0, Math.floor(opts.startAt ?? 1) - 1)) : 0;
+  const blank = '<div class="label blank"></div>';
+  const label = (l: LabelData) =>
+    content === 'qr'
+      ? `
+    <div class="label qr-only">
+      <div class="qr">${qrSvg(qrPayload(l.id))}</div>
+    </div>`
+      : `
     <div class="label">
       <div class="qr">${qrSvg(qrPayload(l.id))}</div>
       <div class="text">
@@ -76,7 +111,8 @@ export function labelsHtml(labels: LabelData[], size: LabelSize): string {
   .text { min-width: 0; line-height: 1.15; }
   .code { font-weight: 800; font-size: 13pt; white-space: nowrap; }
   .line { font-size: 8pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qr-only { justify-content: center; }
   ${sheet}
 </style></head>
-<body><div class="${p.sheet ? 'sheet' : 'roll'}">${labels.map(label).join('')}</div></body></html>`;
+<body><div class="${p.sheet ? 'sheet' : 'roll'}">${blank.repeat(skip)}${labels.map(label).join('')}</div></body></html>`;
 }

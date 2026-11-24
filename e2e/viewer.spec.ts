@@ -50,3 +50,13 @@ test('screens that only change things say why instead', async ({ signedIn: page 
   await expect(page.getByText("Only the lab's owners can change these.")).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save' })).toHaveCount(0);
 });
+
+test('viewers can print labels from Home', async ({ signedIn: page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Print labels' }).click();
+  await expect(page.getByText('No cultures yet. Pick some below.')).toBeVisible();
+  await page.getByRole('radio', { name: 'Blue Oyster', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'TBG-1' }).click();
+  await page.getByRole('button', { name: 'Add 1 culture' }).click();
+  await expect(page.getByRole('button', { name: 'Print label', exact: true })).toBeEnabled();
+});
