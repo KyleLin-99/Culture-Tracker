@@ -10,6 +10,7 @@ import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Button, Choices, ErrorText, Field, LinkText, Muted, Screen, SectionTitle } from '@/ui/components';
 import { colors, font } from '@/ui/theme';
+import { ShareLineage } from '@/ui/ShareLineage';
 import { TreeList } from '@/ui/TreeList';
 
 type OriginChoice = 'S' | 'W' | 'C' | 'SOURCE';
@@ -73,6 +74,8 @@ export default function StrainDetail() {
       ) : (
         <TreeList rows={tree.data ?? []} />
       )}
+
+      {strain.data && <ShareLineage strainId={id} strainName={strain.data.name} canWrite={canWrite} />}
 
       {canWrite && (
         <>

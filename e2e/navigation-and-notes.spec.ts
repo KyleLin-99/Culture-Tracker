@@ -27,7 +27,7 @@ test('a culture links up to its strain, and the strain to all strains', async ({
   await test.step('culture → its strain', async () => {
     await page.getByRole('link', { name: '‹ Blue Oyster' }).filter({ visible: true }).click({ timeout: 10_000 });
     await opened(/\/strains\/[^/]+$/);
-    await expect(page.getByText('Family tree').filter({ visible: true })).toBeVisible();
+    await expect(page.getByText('Family tree', { exact: true }).filter({ visible: true })).toBeVisible();
   });
 
   await test.step('strain → all strains', async () => {
