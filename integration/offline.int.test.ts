@@ -279,6 +279,26 @@ suite('offline sync against real Supabase', () => {
     expect(failed[0].error).toMatch(/row-level security/);
   });
 
+  it('an owner invites a tech, who joins with the code and syncs the lab on their phone', async () => {
+    const [invite] = must(await lab.client.rpc('invite_member', { p_account_id: lab.accountId, p_role: 'tech' })) as { code: string }[];
+    expect(invite.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+
+    const tech = await newUser(env as TestEnv, admin);
+    const joined = must(await tech.client.rpc('accept_invite', { p_code: invite.code.toLowerCase(), p_initials: 'te' }));
+    expect(joined).toBe(lab.accountId);
+
+    const p = await phone({ ...lab, ...tech });
+    expect((await p.q.lookupCode('S-1')).map((r) => r.code)).toContain('S-1');
+    // Techs record work: a note from their phone reaches the server.
+    await p.writer.addNote(lab.accountId, await serverId('S-1'), 'from the tech');
+    await p.sync();
+    expect((await admin.query("select count(*)::int as n from events where note = 'from the tech'")).rows[0].n).toBe(1);
+
+    // The code worked once.
+    const again = await (await newUser(env as TestEnv, admin)).client.rpc('accept_invite', { p_code: invite.code, p_initials: 'XX' });
+    expect(again.error?.message).toMatch(/isn't valid/);
+  });
+
   it('another lab sees none of this, and its changes into this lab are refused', async () => {
     const other = await newLab(env as TestEnv, admin, 'Other lab');
     const p = await phone(other);

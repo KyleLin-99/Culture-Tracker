@@ -110,12 +110,18 @@ database tests locally).
 10. **Stats**: contamination rates over the last 30 days, 90 days or year,
    grouped by recipe, sterilization run, media batch, generation, month or
    strain, and average growth per strain from your growth checks.
-11. **Offline on your phone**: the app keeps a copy of your lab (a year of
+11. **People and labs**: owners invite people from **People** with a one-time
+   code (owner, tech or viewer; it works once, for 7 days), change roles and
+   remove people. Anyone can join a lab with a code (also offered at first
+   sign-in), belong to several labs, and switch between them under **Labs**.
+   Techs record work; viewers see everything and change nothing; only owners
+   change lab settings.
+12. **Offline on your phone**: the app keeps a copy of your lab (a year of
    history plus everything active) and syncs it in the background. Lookups,
    lineage, transfers, backups, status changes and notes all work with no
    signal and sync when you're back online. If another device used a code
    first, the home screen asks you to relabel the plate (S-2C → S-2D).
-12. **Ask Claude about your lab** (optional): the read-only MCP server in
+13. **Ask Claude about your lab** (optional): the read-only MCP server in
    `mcp-server/` lets Claude answer "trace S-3B" or "contamination by run this
    month" from your data. Setup: [mcp-server/README.md](mcp-server/README.md).
 

@@ -4,7 +4,8 @@ import { Text } from 'react-native';
 import { useAuth } from '@/auth/AuthProvider';
 import { createAccount } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
-import { Button, ErrorText, Field, Muted, Screen, styles } from '@/ui/components';
+import { Button, ErrorText, Field, Muted, Screen, SectionTitle, styles } from '@/ui/components';
+import { JoinLabForm } from '@/ui/JoinLabForm';
 
 export default function Onboarding() {
   const { reloadMembership, signOut } = useAuth();
@@ -30,6 +31,7 @@ export default function Onboarding() {
   return (
     <Screen>
       <Text style={styles.body}>One-time setup. Your initials go on every label next to the date and culture code.</Text>
+      <SectionTitle>Start your lab</SectionTitle>
       <Field label="Lab name" value={name} onChangeText={setName} placeholder="Kyle's Lab" />
       <Field
         label="Your initials"
@@ -40,6 +42,11 @@ export default function Onboarding() {
       />
       <ErrorText>{error}</ErrorText>
       <Button title="Create lab" onPress={submit} busy={busy} />
+
+      <SectionTitle>Or join a lab</SectionTitle>
+      <Muted>Someone invited you? Enter the code they sent.</Muted>
+      <JoinLabForm onJoined={(id) => reloadMembership(id)} />
+
       <Button title="Sign out" variant="secondary" onPress={signOut} />
       <Muted>You can rename the lab later.</Muted>
     </Screen>

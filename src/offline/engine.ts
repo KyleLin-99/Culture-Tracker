@@ -165,6 +165,15 @@ export async function dismissFailedChange(seq: number): Promise<void> {
   await refreshCounts(db);
 }
 
+/**
+ * Changes made on this phone that haven't reached the server yet. Switching labs
+ * clears the phone's copy (queue included), so it waits until this is 0.
+ */
+export async function unsentChangeCount(): Promise<number> {
+  const db = await localDb();
+  return db ? pendingCount(db) : 0;
+}
+
 /** Signing out removes the lab from the phone. */
 export async function clearLocalCopy(): Promise<void> {
   const db = await localDb();

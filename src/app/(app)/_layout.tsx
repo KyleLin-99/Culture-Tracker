@@ -53,6 +53,8 @@ export default function AppLayout() {
       <Stack.Screen name="batches" options={{ title: 'Batches and runs' }} />
       <Stack.Screen name="trace" options={{ title: 'Contamination trace' }} />
       <Stack.Screen name="labels" options={{ title: 'Print labels' }} />
+      <Stack.Screen name="people" options={{ title: 'People' }} />
+      <Stack.Screen name="labs" options={{ title: 'Labs' }} />
       <Stack.Screen name="stats" options={{ title: 'Stats' }} />
       <Stack.Screen name="settings" options={{ title: 'Lab settings' }} />
       <Stack.Screen name="scan" options={{ title: 'Scan label' }} />

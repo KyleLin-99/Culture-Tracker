@@ -27,6 +27,12 @@ export type Membership = {
   accounts: { name: string } | null;
 };
 
+/** Someone in a lab, as the People screen lists them. */
+export type Member = { account_id: string; user_id: string; role: Role; initials: string; created_at: string };
+
+/** An unused invite (the code itself is shown once, when made). */
+export type Invite = { id: string; role: Role; created_at: string; expires_at: string };
+
 export type Strain = {
   id: string;
   account_id: string;

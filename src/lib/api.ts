@@ -13,18 +13,21 @@ import type { StatsRow } from '@/domain/stats';
 import type {
   ColonizationCheck,
   Ingredient,
+  Invite,
   Item,
   ItemEvent,
-  ItemWithRefs,
   ItemStatus,
+  ItemWithRefs,
   LookupRow,
   MediaBatch,
   MediaKind,
   Medium,
+  Member,
   Recipe,
-  Strain,
+  Role,
   SterilizationMethod,
   SterilizationRun,
+  Strain,
   TraceRow,
   TreeRow,
 } from '@/domain/types';
@@ -53,6 +56,52 @@ export async function createAccount(name: string, initials: string): Promise<str
   const out = unwrap<string>(await supabase.rpc('create_account', { p_name: name, p_initials: initials }));
   await afterWrite();
   return out;
+}
+
+// --- People and labs (owners invite; anyone can join with a code) ----------------
+
+export async function listMembers(accountId: string): Promise<Member[]> {
+  return unwrap(
+    await supabase.from('members').select('account_id, user_id, role, initials, created_at').eq('account_id', accountId).order('created_at'),
+  );
+}
+
+/** Invites still waiting to be used (owners only). */
+export async function listInvites(accountId: string): Promise<Invite[]> {
+  return unwrap(
+    await supabase
+      .from('invites')
+      .select('id, role, created_at, expires_at')
+      .eq('account_id', accountId)
+      .is('accepted_at', null)
+      .is('revoked_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false }),
+  );
+}
+
+/** Makes a one-time code (ABCD-EFGH) that joins the lab with this role. Shown once. */
+export async function inviteMember(accountId: string, role: Role): Promise<{ code: string; expires_at: string }> {
+  const rows = unwrap<{ code: string; expires_at: string }[]>(await supabase.rpc('invite_member', { p_account_id: accountId, p_role: role }));
+  return rows[0];
+}
+
+export async function revokeInvite(id: string): Promise<void> {
+  unwrap(await supabase.from('invites').update({ revoked_at: new Date().toISOString() }).eq('id', id));
+}
+
+/** Joins the lab the code belongs to; returns its id. */
+export async function acceptInvite(code: string, initials: string): Promise<string> {
+  return unwrap<string>(await supabase.rpc('accept_invite', { p_code: code, p_initials: initials }));
+}
+
+export async function setMemberRole(accountId: string, userId: string, role: Role): Promise<void> {
+  unwrap(await supabase.rpc('set_member_role', { p_account_id: accountId, p_user_id: userId, p_role: role }));
+}
+
+/** Removes someone (owners), or leaves the lab (yourself). */
+export async function removeMember(accountId: string, userId: string): Promise<void> {
+  unwrap(await supabase.rpc('remove_member', { p_account_id: accountId, p_user_id: userId }));
 }
 
 // --- Strains --------------------------------------------------------------

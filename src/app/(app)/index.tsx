@@ -12,13 +12,14 @@ import { Button, ErrorText, Muted, Screen, SectionTitle, styles } from '@/ui/com
 import { BackupsDue } from '@/ui/BackupsDue';
 import { ItemRow } from '@/ui/ItemRow';
 import { PendingWork } from '@/ui/PendingWork';
+import { ROLE_LABEL } from '@/ui/roles';
 import { SyncSummary } from '@/ui/SyncIndicator';
 import { colors, font, space, TAP } from '@/ui/theme';
 
 // Home: scan a label, or type its code, to jump to that culture.
 export default function Home() {
   const membership = useMembership();
-  const { signOut } = useAuth();
+  const { signOut, memberships } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LookupRow[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -125,11 +126,15 @@ export default function Home() {
       )}
 
       <View style={{ marginTop: space.xl, gap: space.sm }}>
-        <Text style={styles.body}>
-          {membership.accounts?.name} · {membership.initials}
+        <Text style={styles.body} testID="current-lab">
+          {membership.accounts?.name} · {membership.initials} · {ROLE_LABEL[membership.role]}
         </Text>
         <SyncSummary />
-        <Button title="Lab settings" variant="secondary" onPress={() => router.push('/settings')} />
+        <Button title="People" variant="secondary" onPress={() => router.push('/people')} />
+        <Button title={memberships.length > 1 ? 'Switch lab' : 'Labs'} variant="secondary" onPress={() => router.push('/labs')} />
+        {membership.role === 'owner' && (
+          <Button title="Lab settings" variant="secondary" onPress={() => router.push('/settings')} />
+        )}
         <Button title="Sign out" variant="secondary" onPress={signOut} />
       </View>
     </Screen>
