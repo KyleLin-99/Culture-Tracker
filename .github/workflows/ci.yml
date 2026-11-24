@@ -76,6 +76,15 @@ jobs:
         run: npx supabase status -o json | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>console.log(Object.keys(JSON.parse(s.slice(s.indexOf("{")))).join(", ")))'
       - name: Phone sync and offline queue against the real API
         run: npm run test:integration
+      # The lab's MCP server: its own package. The integration test runs from the repo
+      # root so it finds the local Supabase the same way the tests above do.
+      - name: MCP server (types, unit, and against the real API)
+        run: |
+          npm ci --prefix mcp-server
+          npm run --prefix mcp-server typecheck
+          npm test --prefix mcp-server
+          npm run --prefix mcp-server build
+          mcp-server/node_modules/.bin/tsx --test mcp-server/test/server.int.test.ts
       - run: npx playwright install --with-deps chromium
       - name: Screens against the real API
         run: npm run test:e2e:real

@@ -65,7 +65,8 @@
       "/node_modules/",
       "/e2e/",
       "/e2e-real/",
-      "/integration/"
+      "/integration/",
+      "/mcp-server/"
     ]
   }
 }
