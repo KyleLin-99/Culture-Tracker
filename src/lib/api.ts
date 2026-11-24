@@ -45,6 +45,22 @@ import type { BackupWithRefresh, RefreshInfo, Relabel } from '@/offline/queries'
 
 import { supabase } from './supabase';
 
+// --- Current lab ------------------------------------------------------------
+// Someone can belong to several labs, and row-level security lets them read all
+// of them. Lists ask for the lab they're working in, set by the app layout.
+
+let currentLab: string | null = null;
+
+/** The lab whose lists to show (the app layout sets it from the lab switcher). */
+export function setCurrentLab(accountId: string | null): void {
+  currentLab = accountId;
+}
+
+function lab(): string {
+  if (!currentLab) throw new Error('No lab selected');
+  return currentLab;
+}
+
 function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
   if (error) throw error;
   return data as T;
@@ -150,7 +166,7 @@ export async function listStrains(): Promise<Strain[]> {
   const local = await localReader();
   if (local) return local.listStrains();
   return unwrap(
-    await supabase.from('strains').select('*').is('deleted_at', null).order('name'),
+    await supabase.from('strains').select('*').eq('account_id', lab()).is('deleted_at', null).order('name'),
   );
 }
 
@@ -199,6 +215,7 @@ export async function recentItems(limit = 15): Promise<(Item & { strains: { name
     await supabase
       .from('items')
       .select('*, strains(name)')
+      .eq('account_id', lab())
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(limit),
@@ -372,7 +389,7 @@ export async function itemChecks(itemIds: string[]): Promise<ColonizationCheck[]
 export async function statsRows(from: string, to: string): Promise<StatsRow[]> {
   const local = await localReader();
   if (local) return local.statsRows(from, to);
-  return unwrap(await supabase.rpc('stats_rows', { p_from: from, p_to: to }));
+  return unwrap(await supabase.rpc('stats_rows', { p_from: from, p_to: to, p_account_id: lab() }));
 }
 
 /** Logs how far a culture has grown: percent of the plate and/or radius in mm. */
@@ -424,6 +441,7 @@ export async function activeBackups(): Promise<BackupWithRefresh[]> {
     await supabase
       .from('items')
       .select('*, strains(name), media_batches(code, sterilization_runs(code))')
+      .eq('account_id', lab())
       .is('deleted_at', null)
       .eq('kind', 'backup')
       .eq('status', 'active')
@@ -486,7 +504,7 @@ export async function backupRefreshDays(): Promise<Record<BackupMedium, number>>
   const local = await localReader();
   if (local) return refreshDays(await local.backupRefreshSettings());
   const rows = unwrap<{ backup_refresh_days: Record<string, unknown> }[]>(
-    await supabase.from('lab_settings').select('backup_refresh_days').is('deleted_at', null).limit(1),
+    await supabase.from('lab_settings').select('backup_refresh_days').eq('account_id', lab()).is('deleted_at', null).limit(1),
   );
   return refreshDays(rows[0]?.backup_refresh_days);
 }
@@ -515,7 +533,7 @@ export async function itemEvents(itemId: string): Promise<ItemEvent[]> {
 export async function lookupCode(query: string): Promise<LookupRow[]> {
   const local = await localReader();
   if (local) return local.lookupCode(query);
-  return unwrap(await supabase.rpc('lookup_code', { p_query: query }));
+  return unwrap(await supabase.rpc('lookup_code', { p_query: query, p_account_id: lab() }));
 }
 
 export async function itemLineage(itemId: string, direction: 'up' | 'down' | 'both' = 'both'): Promise<TreeRow[]> {
@@ -541,6 +559,7 @@ export async function listRuns(limit = 30): Promise<SterilizationRun[]> {
     await supabase
       .from('sterilization_runs')
       .select('*')
+      .eq('account_id', lab())
       .is('deleted_at', null)
       .order('run_on', { ascending: false })
       .order('created_at', { ascending: false })
@@ -580,6 +599,7 @@ export async function listBatches(kind?: MediaKind | null, limit = 30): Promise<
   let q = supabase
     .from('media_batches')
     .select(BATCH_SELECT)
+    .eq('account_id', lab())
     .is('deleted_at', null)
     .order('made_on', { ascending: false })
     .order('created_at', { ascending: false })
@@ -622,7 +642,7 @@ export async function createBatch(args: {
 async function allRecipes(): Promise<Recipe[]> {
   const local = await localReader();
   if (local) return local.listRecipes();
-  return unwrap(await supabase.from('recipes').select('*').order('name').order('version'));
+  return unwrap(await supabase.from('recipes').select('*').eq('account_id', lab()).order('name').order('version'));
 }
 
 /** The newest version of each recipe in use, by name; optionally only one kind. */
@@ -673,7 +693,7 @@ export async function archiveRecipe(familyId: string): Promise<void> {
 // --- Contamination trace ---------------------------------------------------
 
 export async function contaminationTrace(fromDate: string, toDate: string = todayLocal()): Promise<TraceRow[]> {
-  return unwrap(await supabase.rpc('contamination_trace', { p_from: fromDate, p_to: toDate }));
+  return unwrap(await supabase.rpc('contamination_trace', { p_from: fromDate, p_to: toDate, p_account_id: lab() }));
 }
 
 // --- Offline: relabels and refused changes ----------------------------------
@@ -688,6 +708,7 @@ export async function listRelabels(): Promise<Relabel[]> {
     await supabase
       .from('relabels')
       .select('id, entity_id, old_code, new_code, created_at')
+      .eq('account_id', lab())
       .is('resolved_at', null)
       .is('deleted_at', null)
       .order('created_at'),

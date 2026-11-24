@@ -270,6 +270,95 @@ describe('schema', () => {
   });
 });
 
+// Bug: someone in two labs saw both labs' strains after switching labs. Row-level
+// security lets them read every lab they belong to, and the phone's pull never
+// named the lab, so one local copy held both labs.
+const OTHER = 'acct-2';
+
+/** Rows of a second lab the same person belongs to, in every table the phone keeps. */
+function addOtherLab(lab: ReturnType<typeof emptyLab>) {
+  const base = { account_id: OTHER, created_at: tick(), updated_at: tick(), deleted_at: null };
+  lab.lab_settings.push({ ...base, id: 'o-ls', backup_refresh_days: { slant: 7 } });
+  lab.strains.push({ ...base, id: 'o-strain', name: 'Other Lab Reishi', species: null, notes: null });
+  lab.sterilization_runs.push({ ...base, id: 'o-run', code: 'SR-001', method: 'autoclave', psi: null, minutes: null, run_on: '2026-11-19', notes: null });
+  lab.recipes.push({ ...base, id: 'o-rc', family_id: 'o-fam', version: 1, name: 'Other PDA', kind: 'agar', volume_ml: 500, ingredients: [], steps: null });
+  lab.media_batches.push({ ...base, id: 'o-mb', code: 'MB-001', kind: 'agar', recipe: 'PDA', sterilization_run_id: 'o-run', recipe_id: 'o-rc', volume_ml: null, made_on: '2026-11-19', notes: null });
+  lab.items.push({
+    ...base, id: 'o-item', strain_id: 'o-strain', parent_id: null, kind: 'origin', medium: 'agar', origin_prefix: 'S',
+    origin_number: null, position: null, backup_number: null, code: 'S', generation: 0, status: 'active', location: null,
+    media_batch_id: 'o-mb', made_on: '2026-11-20', initials: 'OT', notes: null, aliases: [], refresh_of: null,
+  });
+  lab.events.push({ ...base, id: 'o-ev', item_id: 'o-item', type: 'note', occurred_at: '2026-11-20T10:00:00Z', note: 'other', contam_type: null, photo_key: null });
+  lab.colonization_checks.push({ ...base, id: 'o-ck', item_id: 'o-item', checked_on: '2026-11-21', percent: 50, radius_mm: null, note: null, source: 'manual' });
+  lab.relabels.push({ ...base, id: 'o-rl', entity: 'item', entity_id: 'o-item', old_code: 'S', new_code: 'S2', resolved_at: null });
+  return lab;
+}
+
+const ALL_TABLES = ['lab_settings', 'strains', 'sterilization_runs', 'recipes', 'media_batches', 'items', 'events', 'colonization_checks', 'relabels'];
+
+async function accountsIn(d: SqlDb, table: string) {
+  return (await d.all<{ account_id: string }>(`select distinct account_id from ${table} order by account_id`)).map((r) => r.account_id);
+}
+
+describe('someone in two labs', () => {
+  it('pulls only the lab being synced, though the server would serve both', async () => {
+    const lab = addOtherLab(standardLab());
+    await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+
+    expect(await count('items')).toBe(lab.items.filter((i) => i.account_id === ACCOUNT).length);
+    for (const t of ALL_TABLES) expect([t, await accountsIn(db, t)]).toEqual([t, (await count(t)) ? [ACCOUNT] : []]);
+    const q = localQueries(db);
+    expect((await q.listStrains()).map((s) => s.name)).toEqual(['Blue Oyster']);
+    expect((await q.lookupCode('S')).every((r) => r.strain_name === 'Blue Oyster')).toBe(true);
+    expect(await q.backupRefreshSettings()).toEqual({});
+  });
+
+  it('switching to the other lab shows only that lab', async () => {
+    const lab = addOtherLab(standardLab());
+    await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    await pull(db, fakeRemote(lab).remote, { accountId: OTHER, historyFrom: HISTORY_FROM });
+
+    for (const t of ALL_TABLES) expect([t, await accountsIn(db, t)]).toEqual([t, [OTHER]]);
+    expect((await localQueries(db).listStrains()).map((s) => s.name)).toEqual(['Other Lab Reishi']);
+  });
+
+  it('schema step 7 removes the other lab an older phone pulled, keeping this lab and pending changes', async () => {
+    const old = await openTestDb();
+    await migrate(old, 6);
+    // The old app's pull: every lab the person belongs to, in one copy.
+    const lab = addOtherLab(standardLab());
+    lab.lab_settings.push({ id: 'ls-1', account_id: ACCOUNT, backup_refresh_days: { lc: 90 }, created_at: tick(), updated_at: tick(), deleted_at: null });
+    for (const t of ALL_TABLES) await insertAsOldPhone(old, t, lab[t as keyof typeof lab]);
+    await setMeta(old, 'account_id', ACCOUNT);
+    await setMeta(old, 'first_pull_done', '1');
+    await old.run("insert into outbox (op, payload, created_at) values ('status', '{}', '2026-11-23T12:00:00Z')");
+    expect(await accountsIn(old, 'strains')).toEqual([ACCOUNT, OTHER]);
+
+    await migrate(old);
+    expect((await old.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(SCHEMA_VERSION);
+    for (const t of ALL_TABLES) {
+      const own = lab[t as keyof typeof lab].filter((r) => r.account_id === ACCOUNT).length;
+      expect([t, await accountsIn(old, t), (await old.first<{ n: number }>(`select count(*) as n from ${t}`))!.n]).toEqual([
+        t, own ? [ACCOUNT] : [], own,
+      ]);
+    }
+    expect((await old.first<{ n: number }>('select count(*) as n from outbox'))!.n).toBe(1);
+    expect(await getMeta(old, 'account_id')).toBe(ACCOUNT);
+    expect((await localQueries(old).listStrains()).map((s) => s.name)).toEqual(['Blue Oyster']);
+    expect(await localQueries(old).backupRefreshSettings()).toEqual({ lc: 90 });
+    old.close();
+  });
+
+  it('schema step 7 leaves a copy alone when it does not know its lab yet', async () => {
+    const old = await openTestDb();
+    await migrate(old, 6);
+    await insertAsOldPhone(old, 'strains', addOtherLab(standardLab()).strains);
+    await migrate(old);
+    expect(await accountsIn(old, 'strains')).toEqual([ACCOUNT, OTHER]);
+    old.close();
+  });
+});
+
 describe('lab settings', () => {
   const settings = (days: Record<string, number>) => ({
     id: 'ls-1', account_id: ACCOUNT, backup_refresh_days: days, created_at: tick(), updated_at: tick(), deleted_at: null,

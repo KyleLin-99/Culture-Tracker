@@ -336,4 +336,39 @@ suite('offline sync against real Supabase', () => {
     ).rejects.toMatchObject({ message: 'Culture not found' });
     expect(await p.q.itemChecks([await serverId('S-1')])).toEqual([]);
   });
+
+  // Bug: someone in two labs saw both labs on their phone (and in lists) after
+  // switching. RLS allows every lab you belong to; the pull must name the lab.
+  // Kept last: it gives this file's user a second lab.
+  it('someone in two labs gets only the lab being synced on their phone', async () => {
+    const labB = must(await lab.client.rpc('create_account', { p_name: 'Second lab', p_initials: 'KL' })) as string;
+    const strainB = crypto.randomUUID();
+    must(await lab.client.from('strains').insert({ id: strainB, account_id: labB, name: 'Second Lab Reishi' }));
+    const originB = must(await lab.client.from('items').insert({ account_id: labB, strain_id: strainB, kind: 'origin', medium: 'spore_print', origin_prefix: 'S' }).select().single()) as { id: string };
+    must(await lab.client.rpc('create_transfers', { p_parent_id: originB.id, p_count: 2, p_medium: 'agar', p_made_on: TODAY }));
+    // RLS alone would hand both labs to this user.
+    expect((must(await lab.client.from('strains').select('account_id')) as { account_id: string }[]).map((r) => r.account_id)).toEqual(
+      expect.arrayContaining([lab.accountId, labB]),
+    );
+
+    const a = await phone();
+    for (const t of ['strains', 'items', 'events']) {
+      const accounts = (await a.db.all<{ account_id: string }>(`select distinct account_id from ${t}`)).map((r) => r.account_id);
+      expect([t, accounts]).toEqual([t, [lab.accountId]]);
+    }
+    expect((await a.q.listStrains()).map((s) => s.name)).not.toContain('Second Lab Reishi');
+    expect((await a.q.lookupCode('S')).map((r) => r.strain_name)).not.toContain('Second Lab Reishi');
+
+    const b = await phone({ ...lab, accountId: labB, strainId: strainB });
+    expect((await b.q.listStrains()).map((s) => s.name)).toEqual(['Second Lab Reishi']);
+    expect((await b.q.lookupCode('S')).map((r) => r.code).sort()).toEqual(['S', 'S-1', 'S-2']);
+
+    // The server functions the web uses answer per lab too.
+    const lookup = (acct: string | null) => lab.client.rpc('lookup_code', acct ? { p_query: 'S', p_account_id: acct } : { p_query: 'S' });
+    expect((must(await lookup(labB)) as { strain_name: string }[]).every((r) => r.strain_name === 'Second Lab Reishi')).toBe(true);
+    expect((must(await lookup(lab.accountId)) as { strain_name: string }[]).every((r) => r.strain_name === 'Blue Oyster')).toBe(true);
+    expect(new Set((must(await lookup(null)) as { strain_name: string }[]).map((r) => r.strain_name))).toEqual(
+      new Set(['Blue Oyster', 'Second Lab Reishi']),
+    );
+  });
 });

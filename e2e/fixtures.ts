@@ -102,6 +102,20 @@ export function seedRecipes(): Record<string, unknown>[] {
 
 export const OTHER_LAB_ID = '00000000-0000-4000-8000-0000000000bb';
 
+export function seedStrains(): Record<string, unknown>[] {
+  return [{ id: STRAIN_ID, account_id: ACCOUNT_ID, name: 'Blue Oyster', species: 'Pleurotus ostreatus', notes: null, created_at: MADE_ON }];
+}
+
+/**
+ * Makes the user a member of a second lab (Friend Lab, which sorts first so it opens
+ * first) with a strain and a culture of its own.
+ */
+export function joinSecondLab(lab: Lab) {
+  lab.members.push({ account_id: OTHER_LAB_ID, user_id: USER_ID, role: 'tech', initials: 'KL', accounts: { name: 'Friend Lab' }, created_at: '2026-11-03T00:00:00Z' });
+  lab.strains.push({ id: 'strain-friend', account_id: OTHER_LAB_ID, name: 'Friend Reishi', species: 'Ganoderma lingzhi', notes: null, created_at: MADE_ON });
+  lab.items.push({ ...item('o-fr', 'FR', 'origin', 'culture', 0, null), account_id: OTHER_LAB_ID, strain_id: 'strain-friend', strains: { name: 'Friend Reishi' } });
+}
+
 /** Kyle owns his lab; a tech (JD) works in it too. */
 export function seedMembers(): Record<string, unknown>[] {
   return [
@@ -133,6 +147,8 @@ export type Lab = {
   statsRows: Record<string, unknown>[];
   /** Memberships: the signed-in user's labs, and other people in their lab. */
   members: Record<string, unknown>[];
+  /** Strains, from every lab the user belongs to (see joinSecondLab). */
+  strains: Record<string, unknown>[];
   /** Shared lineage links (token 'tok' + n). */
   shareLinks: Record<string, unknown>[];
   /** Unused invites. */
@@ -161,6 +177,11 @@ async function mockSupabase(page: Page, lab: Lab) {
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     const path = url.pathname;
+    // account_id=eq.<lab>: only that lab's rows. Without it, all of them (row-level
+    // security allows every lab you belong to).
+    const accountFilter = url.searchParams.get('account_id')?.replace(/^eq\./, '');
+    const inLab = <T extends Record<string, unknown>>(rows: T[]) =>
+      rows.filter((r) => !accountFilter || r.account_id === accountFilter);
 
     if (path.startsWith('/auth/v1/user')) return json(session().user);
     if (path.startsWith('/auth/v1/otp')) return json({});
@@ -186,8 +207,10 @@ async function mockSupabase(page: Page, lab: Lab) {
       return json(lab.invites.filter((i) => !i.revoked_at && !i.accepted_at));
     }
     if (path.startsWith('/rest/v1/strains')) {
-      const s = { id: STRAIN_ID, account_id: ACCOUNT_ID, name: 'Blue Oyster', species: 'Pleurotus ostreatus', notes: null, created_at: MADE_ON };
-      return json(single ? s : [s]);
+      // Like row-level security: every lab you belong to, unless the request names one.
+      const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+      const rows = inLab(lab.strains).filter((s) => !id || s.id === id);
+      return json(single ? rows[0] ?? {} : rows);
     }
     if (path.startsWith('/rest/v1/items')) {
       const id = url.searchParams.get('id')?.replace(/^eq\./, '');
@@ -200,7 +223,7 @@ async function mockSupabase(page: Page, lab: Lab) {
         const ids = ref.replace(/^(eq\.|in\.\()/, '').replace(/\)$/, '').split(',');
         return json([...lab.items].reverse().filter((i) => ids.includes(i.refresh_of as string)));
       }
-      return json([...lab.items].reverse().filter((i) => (!kind || i.kind === kind) && (!status || i.status === status)));
+      return json(inLab([...lab.items].reverse()).filter((i) => (!kind || i.kind === kind) && (!status || i.status === status)));
     }
     if (path.startsWith('/rest/v1/lab_settings')) {
       return json(lab.settings ? [lab.settings] : []);
@@ -365,8 +388,8 @@ async function mockSupabase(page: Page, lab: Lab) {
         const q = String(body.p_query);
         return json(
           lab.items
-            .filter((i) => i.code.startsWith(q))
-            .map((i) => ({ ...i, strain_name: 'Blue Oyster', exact: i.code === q })),
+            .filter((i) => i.code.startsWith(q) && (!body.p_account_id || i.account_id === body.p_account_id))
+            .map((i) => ({ ...i, strain_name: (i.strains as { name: string }).name, exact: i.code === q })),
         );
       }
       if (fn === 'refresh_backup') {
@@ -406,7 +429,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

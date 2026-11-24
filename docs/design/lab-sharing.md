@@ -70,6 +70,11 @@ labels keep their initials.
 
 - **Lab switcher** when a user belongs to more than one lab (name in the header;
   switching clears the phone's copy and pulls the other lab, as sign-in does now).
+  Row-level security lets a member of several labs read all of them, so every
+  list names the lab: `setCurrentLab()` in `src/lib/api.ts` (set by the app
+  layout) adds `account_id` to list reads, `lookup_code`, `stats_rows` and
+  `contamination_trace` take `p_account_id`, and the phone's pull asks for one
+  lab only. (Found in validation Run 1: strains from both labs showed together.)
 - **Viewers:** action buttons hidden; the phone's writer refuses writes for a
   viewer (same messages as the server), so nothing gets queued that would fail.
 - **People screen** (owner): list members with role and initials, invite (shows

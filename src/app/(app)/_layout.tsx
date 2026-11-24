@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 
 import { useMembership } from '@/auth/AuthProvider';
+import { setCurrentLab } from '@/lib/api';
 import { startSync } from '@/offline/engine';
 import { HomeButton } from '@/ui/HomeButton';
 import { SyncIndicator } from '@/ui/SyncIndicator';
@@ -14,6 +15,8 @@ export const unstable_settings = { initialRouteName: 'index' };
 
 export default function AppLayout() {
   const { account_id, initials, role } = useMembership();
+  // Set while rendering, so screens below see the right lab on their first load.
+  setCurrentLab(account_id);
 
   // Phones keep a local copy of the lab in sync while signed in (no-op on web).
   useEffect(() => {
