@@ -81,6 +81,9 @@ database tests locally).
    **Labels** have a QR code plus strain · date · initials · code. Print on a
    Brother 29 × 90 mm or 62 mm roll (AirPrint on iPhone; on Android install
    Brother's *Print Service Plugin*), or on a letter sheet of 30 (Avery 5160).
+   **Print labels** on the home screen picks cultures by strain and generation.
+   Print several copies of each, fill a whole sheet, start part-way down a
+   used sheet, or print just the QR code (small stickers for lids and tubes).
    **Scan label** on the home screen opens the culture. The QR holds the
    culture's id, so it still works after a relabel.
 4. From any culture: make backups, mark it contaminated, retire it, add, edit
