@@ -129,3 +129,26 @@ export function growthByStrain(rows: StatsRow[], checks: Pick<ColonizationCheck,
     })
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
+
+/**
+ * Plates made from one source (a batch or run) against the rest of the lab over
+ * the same rows, so a bad batch stands out from the lab's usual rate.
+ */
+export function sourceVsRest(rows: StatsRow[], pick: (r: StatsRow) => boolean): {
+  source: ReturnType<typeof overall>;
+  rest: ReturnType<typeof overall>;
+} {
+  return { source: overall(rows.filter(pick)), rest: overall(rows.filter((r) => !pick(r))) };
+}
+
+/** Dates to compare a source over: a month before it was made to three months after (not past today). */
+export function sourceWindow(madeOn: string, today: string): { from: string; to: string } {
+  const [y, m, d] = madeOn.split('-').map(Number);
+  const shift = (days: number) => {
+    const x = new Date(y, m - 1, d + days);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+  };
+  const to = shift(90);
+  return { from: shift(-30), to: to < today ? to : today < madeOn ? madeOn : today };
+}

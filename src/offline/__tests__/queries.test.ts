@@ -127,7 +127,7 @@ describe('items and lab records', () => {
 
   it('shows the exact recipe version each batch was made from', async () => {
     const [mb2, mb3] = await q.listBatches(null);
-    expect([mb2.recipes, mb2.volume_ml]).toEqual([{ name: 'MEA', version: 1 }, 250]);
+    expect([mb2.recipes, mb2.volume_ml]).toEqual([{ name: 'MEA', version: 1, family_id: 'fam-mea' }, 250]);
     expect(mb3.recipes).toBeNull();
   });
 
@@ -316,5 +316,93 @@ describe('statsRows', () => {
     expect(rows.find((r) => r.id === 'id-S-3')).toMatchObject({
       batch_id: null, batch_code: null, run_id: null, run_code: null, recipe_family: null, recipe_name: null,
     });
+  });
+});
+
+// The batch and run pages read getRun, getBatch, batchesInRun and itemsOnBatches.
+// Same filters and order as those functions in src/lib/api.ts: batches in a run by
+// code, live only; cultures newest made_on first, then code in binary order.
+// Its own lab, so these batches don't change what the tests above see.
+describe('batch and run pages', () => {
+  let bq: LocalQueries;
+  let closeBatches: () => void;
+
+  beforeAll(async () => {
+    const db = await openTestDb();
+    closeBatches = db.close;
+    await migrate(db);
+    const lab = emptyLab();
+    lab.strains.push({ id: STRAIN, account_id: ACCOUNT, name: 'Blue Oyster', species: null, notes: null, created_at: tick(), updated_at: tick(), deleted_at: null });
+    const run = (id: string, code: string) => ({
+      id, account_id: ACCOUNT, code, method: 'autoclave', psi: 15, minutes: 45, run_on: '2026-11-10', notes: 'full load',
+      created_at: tick(), updated_at: tick(), deleted_at: null,
+    });
+    lab.sterilization_runs.push(run('run-1', 'SR-001'), run('run-2', 'SR-002'));
+    lab.recipes.push({
+      id: 'rc-1', account_id: ACCOUNT, family_id: 'fam-mea', version: 1, name: 'MEA', kind: 'agar', volume_ml: 500,
+      ingredients: [], steps: null, created_at: tick(), updated_at: tick(), deleted_at: null,
+    });
+    const batch = (id: string, code: string, runId: string | null, extra: Record<string, unknown> = {}) => ({
+      id, account_id: ACCOUNT, code, kind: 'agar', recipe: null, sterilization_run_id: runId, recipe_id: null, volume_ml: null,
+      made_on: '2026-11-10', notes: null, created_at: tick(), updated_at: tick(), deleted_at: null, ...extra,
+    });
+    // Added out of code order on purpose.
+    lab.media_batches.push(
+      batch('mb-3', 'MB-003', 'run-1'),
+      batch('mb-1', 'MB-001', 'run-1', { recipe_id: 'rc-1', volume_ml: 250 }),
+      batch('mb-gone', 'MB-002', 'run-1', { deleted_at: '2026-11-11T00:00:00Z' }),
+      batch('mb-4', 'MB-004', 'run-2'),
+      batch('mb-5', 'MB-005', null),
+    );
+
+    const b = builder(lab);
+    b.origin('S', null, { madeOn: '2026-11-01' });
+    b.transfer('S', { madeOn: '2026-11-12', mediaBatchId: 'mb-1' }); // S-1
+    b.transfer('S', { madeOn: '2026-11-14', mediaBatchId: 'mb-3' }); // S-2
+    b.transfer('S-1', { madeOn: '2026-11-14', mediaBatchId: 'mb-1' }); // S-1A
+    b.backup('S-1', { madeOn: '2026-11-14', mediaBatchId: 'mb-1' }); // S-1(1): '(' sorts before 'A' in binary order
+    b.transfer('S-1', { madeOn: '2026-11-15', mediaBatchId: 'mb-4' }); // S-1B: another run's batch
+    Object.assign(b.transfer('S-1', { madeOn: '2026-11-16', mediaBatchId: 'mb-1' }), { deleted_at: '2026-11-17T00:00:00Z' }); // S-1C: removed
+    b.transfer('S', { madeOn: '2026-11-13' }); // S-3: no batch
+    await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: '2025-11-23' });
+    bq = localQueries(db);
+  });
+  afterAll(() => closeBatches());
+
+  it('reads a run by id', async () => {
+    expect(await bq.getRun('run-1')).toMatchObject({ id: 'run-1', code: 'SR-001', method: 'autoclave', psi: 15, minutes: 45, run_on: '2026-11-10', notes: 'full load' });
+    await expect(bq.getRun('nope')).rejects.toThrow();
+  });
+
+  it('reads a batch with its run and recipe family (for the recipe link)', async () => {
+    const mb1 = await bq.getBatch('mb-1');
+    expect(mb1).toMatchObject({ code: 'MB-001', sterilization_run_id: 'run-1', recipe_id: 'rc-1', volume_ml: 250 });
+    expect(mb1.sterilization_runs).toEqual({ code: 'SR-001' });
+    expect(mb1.recipes).toEqual({ name: 'MEA', version: 1, family_id: 'fam-mea' });
+    const mb5 = await bq.getBatch('mb-5');
+    expect([mb5.sterilization_runs, mb5.recipes]).toEqual([null, null]);
+    await expect(bq.getBatch('nope')).rejects.toThrow();
+  });
+
+  it('lists the live batches in a run by code, with their run', async () => {
+    const inRun = await bq.batchesInRun('run-1');
+    expect(inRun.map((b) => b.code)).toEqual(['MB-001', 'MB-003']);
+    expect(inRun.every((b) => b.sterilization_runs?.code === 'SR-001')).toBe(true);
+    expect((await bq.batchesInRun('run-2')).map((b) => b.id)).toEqual(['mb-4']);
+    expect(await bq.batchesInRun('nope')).toEqual([]);
+  });
+
+  it('lists live cultures on the batches, newest first, then by code', async () => {
+    expect((await bq.itemsOnBatches(['mb-1'])).map((i) => i.code)).toEqual(['S-1(1)', 'S-1A', 'S-1']);
+    expect((await bq.itemsOnBatches(['mb-1', 'mb-3'])).map((i) => i.code)).toEqual(['S-1(1)', 'S-1A', 'S-2', 'S-1']);
+    expect(await bq.itemsOnBatches([])).toEqual([]);
+    expect(await bq.itemsOnBatches(['mb-5'])).toEqual([]);
+  });
+
+  it('returns each culture with its strain, batch and run, like the culture list', async () => {
+    const [first] = await bq.itemsOnBatches(['mb-1']);
+    expect(first).toMatchObject({ id: 'id-S-1(1)', kind: 'backup', made_on: '2026-11-14', media_batch_id: 'mb-1' });
+    expect(first.strains).toEqual({ name: 'Blue Oyster' });
+    expect(first.media_batches).toEqual({ code: 'MB-001', sterilization_runs: { code: 'SR-001' } });
   });
 });

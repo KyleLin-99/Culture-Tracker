@@ -1,10 +1,11 @@
 // The phone's sync and offline queue, run against a real Supabase: the same
 // API calls, server functions and row-level security the app meets in the lab.
 // A phone here is a SQLite database (sql.js) plus the app's real offline code.
-import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
-import { createClient } from '@supabase/supabase-js';
+import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Client } from 'pg';
 
+import * as api from '@/lib/api';
 import { failedChanges, flush } from '@/offline/outbox';
 import { localQueries } from '@/offline/queries';
 import { createRemote } from '@/offline/remote';
@@ -15,6 +16,23 @@ import { localWriter } from '@/offline/writer';
 
 import { loadTestEnv, type TestEnv } from './env';
 import { adminDb, localToday, must, newLab, newPhone, newUser } from './helpers';
+
+// The web's reads in src/lib/api.ts, run against the real API: its Supabase client
+// is swapped for a test user's, and there is no local copy (as on the web), so
+// api.getBatch() etc. take their server path and can be compared with the phone's.
+let mockServer: SupabaseClient | null = null;
+jest.mock('@/lib/supabase', () => ({
+  supabase: new Proxy({}, { get: (_t, key) => (mockServer as unknown as Record<string | symbol, unknown>)[key] }),
+}));
+jest.mock('@/offline/engine', () => ({
+  localReader: async () => null,
+  localWriter: async () => null,
+  afterWrite: async () => undefined,
+  syncNow: async () => undefined,
+  listFailedChanges: async () => [],
+  dismissFailedChange: async () => undefined,
+}));
+jest.mock('expo-crypto', () => ({ randomUUID: () => crypto.randomUUID() }));
 
 const env = loadTestEnv();
 if (!env && process.env.CI) throw new Error('CI: local Supabase not found (supabase status)');
@@ -203,7 +221,7 @@ suite('offline sync against real Supabase', () => {
     const versions = (await p.q.listRecipes()).filter((r) => r.family_id === v1.family_id);
     expect(versions.map((r) => [r.version, r.volume_ml, r.ingredients[0].amount])).toEqual([[1, 500, 10], [2, 1000, 20]]);
     const batch = (await p.q.listBatches('agar')).find((b) => b.recipe_id === v1.id)!;
-    expect([batch.recipes, batch.volume_ml]).toEqual([{ name: 'MEA 2%', version: 1 }, 250]);
+    expect([batch.recipes, batch.volume_ml]).toEqual([{ name: 'MEA 2%', version: 1, family_id: v1.family_id }, 250]);
   });
 
   it('growth checks logged offline reach the server once, and can be removed', async () => {
@@ -335,6 +353,73 @@ suite('offline sync against real Supabase', () => {
       write.applyCheck({ id: crypto.randomUUID(), item_id: await serverId('S-1'), checked_on: TODAY, percent: 5, radius_mm: null, note: null }),
     ).rejects.toMatchObject({ message: 'Culture not found' });
     expect(await p.q.itemChecks([await serverId('S-1')])).toEqual([]);
+  });
+
+  // The batch and run pages read these on phones from the local copy and on the
+  // web from the server (src/lib/api.ts); both must answer the same.
+  it("the phone's batch and run page reads answer like the server's", async () => {
+    mockServer = lab.client;
+    const acct = lab.accountId;
+    const yesterday = (() => {
+      const d = new Date(Date.now() - 864e5);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    })();
+    const run1 = await api.createRun({ accountId: acct, method: 'autoclave', psi: 15, minutes: 45, runOn: TODAY, notes: 'full load' });
+    const run2 = await api.createRun({ accountId: acct, method: 'pressure_cooker', runOn: TODAY });
+    const recipe = must(await lab.client.rpc('save_recipe', {
+      p_account_id: acct, p_family_id: null, p_name: 'PDA', p_kind: 'agar', p_volume_ml: 500,
+      p_ingredients: [{ name: 'Potato', amount: 100, unit: 'g' }],
+    })) as { id: string; family_id: string };
+    const mb1 = await api.createBatch({ accountId: acct, kind: 'agar', runId: run1.id, recipeId: recipe.id, volumeMl: 250, madeOn: TODAY });
+    const mb2 = await api.createBatch({ accountId: acct, kind: 'lc', recipe: 'Honey', runId: run1.id, madeOn: TODAY });
+    const gone = await api.createBatch({ accountId: acct, kind: 'agar', runId: run1.id, madeOn: TODAY });
+    await admin.query('update media_batches set deleted_at = now() where id = $1', [gone.id]);
+    const mb3 = await api.createBatch({ accountId: acct, kind: 'agar', runId: run2.id, madeOn: TODAY });
+    const loose = await api.createBatch({ accountId: acct, kind: 'agar', madeOn: TODAY });
+
+    must(await lab.client.from('items').insert({ account_id: acct, strain_id: lab.strainId, kind: 'origin', medium: 'tissue', origin_prefix: 'C' }));
+    const c = await serverId('C');
+    const transfers = (parent: string, n: number, madeOn: string, batch: string) =>
+      lab.client.rpc('create_transfers', { p_parent_id: parent, p_count: n, p_medium: 'agar', p_made_on: madeOn, p_media_batch_id: batch });
+    must(await transfers(c, 2, yesterday, mb1.id)); // C-1, C-2
+    must(await transfers(c, 1, TODAY, mb2.id)); // C-3
+    must(await transfers(c, 1, TODAY, mb3.id)); // C-4: the other run
+    must(await transfers(await serverId('C-1'), 2, TODAY, mb1.id)); // C-1A, C-1B
+    await admin.query('update items set deleted_at = now() where id = $1', [await serverId('C-1B')]);
+
+    const { q } = await phone();
+
+    const runFields = (r: Awaited<ReturnType<typeof api.getRun>>) => [r.id, r.code, r.method, r.psi, r.minutes, String(r.run_on), r.notes];
+    for (const run of [run1, run2]) {
+      expect(runFields(await q.getRun(run.id))).toEqual(runFields(await api.getRun(run.id)));
+    }
+    expect((await api.getRun(run1.id)).code).toMatch(/^SR-\d{3}$/);
+
+    const batchFields = (b: Awaited<ReturnType<typeof api.getBatch>>) => [
+      b.id, b.code, b.kind, b.recipe, b.sterilization_run_id, b.recipe_id, b.volume_ml === null ? null : Number(b.volume_ml),
+      String(b.made_on), b.sterilization_runs ?? null, b.recipes ?? null,
+    ];
+    for (const b of [mb1, mb2, mb3, loose]) {
+      expect(batchFields(await q.getBatch(b.id))).toEqual(batchFields(await api.getBatch(b.id)));
+    }
+    expect((await q.getBatch(mb1.id)).recipes).toEqual({ name: 'PDA', version: 1, family_id: recipe.family_id });
+    expect((await q.getBatch(loose.id)).sterilization_runs).toBeNull();
+
+    for (const run of [run1, run2]) {
+      const server = await api.batchesInRun(run.id);
+      expect((await q.batchesInRun(run.id)).map(batchFields)).toEqual(server.map(batchFields));
+    }
+    expect((await api.batchesInRun(run1.id)).map((b) => b.id)).toEqual([mb1.id, mb2.id]); // by code, removed batch left out
+
+    const itemFields = (i: Awaited<ReturnType<typeof api.itemsOnBatches>>[number]) => [
+      i.id, i.code, String(i.made_on), i.status, i.medium, i.strains, i.media_batches,
+    ];
+    for (const ids of [[mb1.id], [mb1.id, mb2.id], [mb1.id, mb2.id, mb3.id], [loose.id], []]) {
+      expect((await q.itemsOnBatches(ids)).map(itemFields)).toEqual((await api.itemsOnBatches(ids)).map(itemFields));
+    }
+    // Newest first, then by code; the removed C-1B is left out.
+    expect((await api.itemsOnBatches([mb1.id, mb2.id])).map((i) => i.code)).toEqual(['C-1A', 'C-3', 'C-1', 'C-2']);
   });
 
   // Bug: someone in two labs saw both labs on their phone (and in lists) after

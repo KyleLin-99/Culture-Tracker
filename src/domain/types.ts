@@ -149,7 +149,7 @@ export type MediaBatch = {
   notes: string | null;
   created_at: string;
   sterilization_runs?: { code: string } | null;
-  recipes?: { name: string; version: number } | null;
+  recipes?: { name: string; version: number; family_id?: string } | null;
 };
 
 export type Ingredient = { name: string; amount: number; unit: string };
