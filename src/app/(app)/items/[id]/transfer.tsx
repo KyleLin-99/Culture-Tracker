@@ -70,7 +70,11 @@ export default function Transfer() {
             </Card>
           ))}
         </View>
-        <Button title="Done" onPress={() => router.back()} />
+        <Button
+          title={created.length === 1 ? 'Print label' : `Print ${created.length} labels`}
+          onPress={() => router.push({ pathname: '/labels', params: { ids: created.map((c) => c.id).join(',') } })}
+        />
+        <Button title="Done" variant="secondary" onPress={() => router.back()} />
         <Button
           title="Transfer more"
           variant="secondary"

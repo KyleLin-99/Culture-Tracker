@@ -52,6 +52,8 @@ export default function AppLayout() {
       <Stack.Screen name="items/[id]/transfer" options={{ title: 'Transfer' }} />
       <Stack.Screen name="batches" options={{ title: 'Batches and runs' }} />
       <Stack.Screen name="trace" options={{ title: 'Contamination trace' }} />
+      <Stack.Screen name="labels" options={{ title: 'Print labels' }} />
+      <Stack.Screen name="scan" options={{ title: 'Scan label' }} />
       <Stack.Screen name="recipes/index" options={{ title: 'Recipes' }} />
       <Stack.Screen name="recipes/[id]" options={{ title: 'Recipe' }} />
       <Stack.Screen name="recipes/edit" options={{ title: 'Recipe' }} />
