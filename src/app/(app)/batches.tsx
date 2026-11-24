@@ -1,13 +1,16 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { useMembership } from '@/auth/AuthProvider';
 import { labelDate } from '@/domain/cultureCode';
+import { formatVolume, recipeLabel, scaleIngredients } from '@/domain/recipes';
 import type { MediaKind, SterilizationMethod } from '@/domain/types';
-import { createBatch, createRun, listBatches, listRuns } from '@/lib/api';
+import { createBatch, createRun, listBatches, listRecipes, listRuns } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
-import { Button, Card, Choices, ErrorText, Field, Muted, Screen, SectionTitle, styles } from '@/ui/components';
+import { Button, Card, Choices, ErrorText, Field, LinkText, Muted, Screen, SectionTitle, styles } from '@/ui/components';
+import { IngredientCard } from '@/ui/Ingredients';
 import { space } from '@/ui/theme';
 
 const METHODS: { value: SterilizationMethod; label: string }[] = [
@@ -38,6 +41,7 @@ export default function Batches() {
   const { account_id } = useMembership();
   const runs = useData(() => listRuns());
   const batches = useData(() => listBatches());
+  const recipes = useData(() => listRecipes());
 
   const [method, setMethod] = useState<SterilizationMethod>('pressure_cooker');
   const [psi, setPsi] = useState('15');
@@ -47,6 +51,8 @@ export default function Batches() {
   const [kind, setKind] = useState<MediaKind>('agar');
   const [recipe, setRecipe] = useState('');
   const [runId, setRunId] = useState('');
+  const [recipeId, setRecipeId] = useState('');
+  const [volume, setVolume] = useState('');
 
   const [busy, setBusy] = useState<'run' | 'batch' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,8 +85,16 @@ export default function Batches() {
     setBusy('batch');
     setError(null);
     try {
-      const b = await createBatch({ accountId: account_id, kind, recipe, runId: runId || null });
+      const b = await createBatch({
+        accountId: account_id,
+        kind,
+        recipe,
+        runId: runId || null,
+        recipeId: chosen?.id ?? null,
+        volumeMl: numberOrNull(volume) ?? chosen?.volume_ml ?? null,
+      });
       setRecipe('');
+      setVolume('');
       setSaved(`Logged ${b.code}`);
       await batches.reload();
     } catch (e) {
@@ -91,13 +105,16 @@ export default function Batches() {
   }
 
   const recentRuns = (runs.data ?? []).slice(0, 6);
+  const kindRecipes = (recipes.data ?? []).filter((r) => r.kind === kind);
+  const chosen = kindRecipes.find((r) => r.id === recipeId) ?? null;
+  const batchMl = numberOrNull(volume) ?? chosen?.volume_ml ?? null;
 
   return (
     <Screen>
       <ErrorText>{error ?? runs.error ?? batches.error}</ErrorText>
       {saved && <Text style={styles.body}>{saved}. Write the code on the jar or sleeve.</Text>}
 
-      <SectionTitle>Sterilization run</SectionTitle>
+      <SectionTitle>Sterilization or pasteurization run</SectionTitle>
       <Choices<SterilizationMethod> label="Method" value={method} onChange={setMethod} options={METHODS} />
       <View style={[styles.row, { alignItems: 'flex-start' }]}>
         <View style={{ flex: 1 }}>
@@ -112,7 +129,37 @@ export default function Batches() {
 
       <SectionTitle>Media batch</SectionTitle>
       <Choices<MediaKind> label="Kind" value={kind} onChange={setKind} options={KINDS} />
-      <Field label="Recipe (optional)" value={recipe} onChangeText={setRecipe} placeholder="MEA 2%, 500 ml" />
+      {kindRecipes.length > 0 ? (
+        <Choices<string>
+          label="Recipe"
+          value={chosen ? chosen.id : ''}
+          onChange={setRecipeId}
+          options={[{ value: '', label: 'None' }, ...kindRecipes.map((r) => ({ value: r.id, label: recipeLabel(r) }))]}
+        />
+      ) : (
+        <LinkText title="Save a recipe to pick it here ›" onPress={() => router.push('/recipes/edit')} />
+      )}
+      {chosen && (
+        <>
+          <Field
+            label="Batch size (ml)"
+            value={volume}
+            onChangeText={setVolume}
+            keyboardType="numeric"
+            placeholder={String(chosen.volume_ml)}
+          />
+          <IngredientCard
+            ingredients={scaleIngredients(chosen.ingredients, chosen.volume_ml, batchMl ?? chosen.volume_ml)}
+            volumeMl={batchMl ?? chosen.volume_ml}
+          />
+        </>
+      )}
+      <Field
+        label={chosen ? 'Recipe notes (optional)' : 'Recipe (optional)'}
+        value={recipe}
+        onChangeText={setRecipe}
+        placeholder={chosen ? 'Used dark malt this time' : 'MEA 2%, 500 ml'}
+      />
       <Choices<string>
         label="Sterilized in"
         value={recentRuns.some((r) => r.id === runId) ? runId : ''}
@@ -128,7 +175,16 @@ export default function Batches() {
           <Card key={b.id}>
             <Text style={styles.codeSmall}>{b.code}</Text>
             <Muted>
-              {[KIND_LABEL[b.kind], b.recipe, labelDate(b.made_on), b.sterilization_runs?.code].filter(Boolean).join(' · ')}
+              {[
+                KIND_LABEL[b.kind],
+                b.recipes ? recipeLabel(b.recipes) : null,
+                b.volume_ml ? formatVolume(b.volume_ml) : null,
+                b.recipe,
+                labelDate(b.made_on),
+                b.sterilization_runs?.code,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </Muted>
           </Card>
         ))}

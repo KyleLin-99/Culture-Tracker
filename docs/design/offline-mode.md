@@ -47,7 +47,7 @@ The server's rules stay in charge in every case: the database still validates co
 
 1. ✅ Local schema + migrations in `src/offline/schema.ts` (mirrors the Supabase tables the app reads).
 2. ✅ Pull sync (read-only offline): `src/offline/sync.ts`, `engine.ts`; screens read from SQLite through `src/lib/api.ts`.
-3. ✅ Outbox + push for transfers, backups, origins, status changes, notes and strains (`src/offline/outbox.ts`, `writer.ts`). Media batches and sterilization runs stay online-only for now.
+3. ✅ Outbox + push for transfers, backups, origins, status changes, notes and strains (`src/offline/outbox.ts`, `writer.ts`). Media batches, sterilization runs and recipes stay online-only for now (the phone keeps a read-only copy for pickers).
 4. ✅ Conflict handling per the decision above, with a "Relabel these plates" list (`apply_items` + `relabels` on the server).
 5. ✅ Sync status: header badge, home-screen summary with changes waiting.
 
@@ -67,7 +67,7 @@ Sharing a lab with other people (roles: owner, tech, viewer) comes after this. S
 - **First pull:** all strains, runs and batches; items that are active or made in the last 365 days, plus every ancestor of those (so lineage is complete offline); events from the last 365 days. Pages of 500.
 - **Later pulls:** every row changed since the last pull, minus a 5-minute overlap to catch late commits. Soft deletes come down like any change.
 - **When it syncs:** on sign-in, when the app returns to the foreground, when the connection comes back, every 2 minutes, and right after each saved change.
-- **Reads:** once the first pull finishes, lookups, culture screens, lineage, strain trees, strains, batches and runs read from the phone. The contamination trace still needs a connection.
+- **Reads:** once the first pull finishes, lookups, culture screens, lineage, strain trees, strains, batches, runs and recipes read from the phone. The contamination trace still needs a connection.
 - **Status:** an "Offline" badge in the header; a "Synced 4 min ago · works offline" line on the home screen.
 - **Sign-out** removes the lab from the phone; a different lab signing in starts a fresh copy.
 - **Tests:** `src/offline/__tests__/` run the real sync and queries against SQLite (sql.js) and check the local lineage and tree order match the server functions.

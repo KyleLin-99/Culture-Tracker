@@ -4,7 +4,7 @@ import type { SqlDb } from './sql';
 // minus server-only rules: the server stays the source of truth.
 // Bump SCHEMA_VERSION and add a step to MIGRATIONS for any change.
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -65,13 +65,25 @@ const MIGRATIONS: Record<number, string> = {
       attempts integer not null default 0
     );
   `,
+  // Recipes (read-only on the phone, like batches and runs). Batches made
+  // before this have no recipe, so the copy needs no re-pull.
+  3: `
+    create table recipes (
+      id text primary key, account_id text not null, family_id text not null, version integer not null,
+      name text not null, kind text not null, volume_ml real not null, ingredients text not null default '[]',
+      steps text, created_at text, updated_at text not null, deleted_at text
+    );
+    create index recipes_family_idx on recipes (family_id, version);
+    alter table media_batches add column recipe_id text;
+    alter table media_batches add column volume_ml real;
+  `,
 };
 
 /** Creates or upgrades the local tables. Safe to call on every app start. */
-export async function migrate(db: SqlDb): Promise<void> {
+export async function migrate(db: SqlDb, upTo = SCHEMA_VERSION): Promise<void> {
   const row = await db.first<{ user_version: number }>('pragma user_version');
   const current = row?.user_version ?? 0;
-  for (let v = current + 1; v <= SCHEMA_VERSION; v += 1) {
+  for (let v = current + 1; v <= upTo; v += 1) {
     await db.transaction(async () => {
       await db.exec(MIGRATIONS[v]);
       await db.exec(`pragma user_version = ${v}`);
@@ -93,7 +105,7 @@ export async function setMeta(db: SqlDb, key: string, value: string | null): Pro
 export async function clearAll(db: SqlDb): Promise<void> {
   await db.transaction(async () => {
     await db.exec(
-      'delete from outbox; delete from relabels; delete from events; delete from items; delete from media_batches; delete from sterilization_runs; delete from strains; delete from meta;',
+      'delete from outbox; delete from relabels; delete from events; delete from items; delete from media_batches; delete from recipes; delete from sterilization_runs; delete from strains; delete from meta;',
     );
   });
 }

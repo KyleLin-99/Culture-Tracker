@@ -68,6 +68,20 @@ export function seedRecords() {
   return { runs: [run] as Record<string, unknown>[], batches: [batch] as Record<string, unknown>[] };
 }
 
+/** One saved recipe: MEA 2%, version 1, for 500 ml. */
+export function seedRecipes(): Record<string, unknown>[] {
+  return [
+    {
+      id: 'rc-mea-1', account_id: ACCOUNT_ID, family_id: 'fam-mea', version: 1, name: 'MEA 2%', kind: 'agar', volume_ml: 500,
+      ingredients: [
+        { name: 'Light malt extract', amount: 10, unit: 'g' },
+        { name: 'Agar', amount: 10, unit: 'g' },
+      ],
+      steps: 'Cook 45 min at 15 psi', created_at: `${MADE_ON}T09:00:00Z`, deleted_at: null,
+    },
+  ];
+}
+
 /** TBG-2's history: a transfer (fixed) and a note (editable). */
 export function seedEvents(): Record<string, unknown>[] {
   return [
@@ -87,6 +101,8 @@ export type Lab = {
   items: Row[];
   runs: Record<string, unknown>[];
   batches: Record<string, unknown>[];
+  /** Every saved recipe version. */
+  recipes: Record<string, unknown>[];
   /** History entries (notes, transfers…) by item. */
   events: Record<string, unknown>[];
   /** Plates to relabel after an offline code conflict. */
@@ -131,6 +147,10 @@ async function mockSupabase(page: Page, lab: Lab) {
       const itemId = url.searchParams.get('item_id')?.replace(/^eq\./, '');
       return json(lab.events.filter((e) => e.item_id === itemId && !e.deleted_at).reverse());
     }
+    if (path.startsWith('/rest/v1/recipes')) {
+      const family = url.searchParams.get('family_id')?.replace(/^eq\./, '');
+      return json(lab.recipes.filter((r) => !family || r.family_id === family));
+    }
     if (path.startsWith('/rest/v1/relabels')) {
       if (req.method() === 'PATCH') {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
@@ -157,7 +177,15 @@ async function mockSupabase(page: Page, lab: Lab) {
           code: `${prefix}-${String(rows.length + 1).padStart(3, '0')}`,
           created_at: new Date().toISOString(),
           ...body,
-          ...(table === 'media_batches' ? { sterilization_runs: run ? { code: run.code } : null } : {}),
+          ...(table === 'media_batches'
+            ? {
+                sterilization_runs: run ? { code: run.code } : null,
+                recipes: (() => {
+                  const r = lab.recipes.find((x) => x.id === body.recipe_id);
+                  return r ? { name: r.name, version: r.version } : null;
+                })(),
+              }
+            : {}),
         };
         rows.unshift(row);
         return json(single ? row : [row], 201);
@@ -174,6 +202,21 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
+      if (fn === 'save_recipe') {
+        const family = (body.p_family_id as string | null) ?? `fam-${lab.recipes.length + 1}`;
+        const version = lab.recipes.filter((r) => r.family_id === family).length + 1;
+        const row = {
+          id: `rc-${lab.recipes.length + 1}`, account_id: ACCOUNT_ID, family_id: family, version, name: body.p_name,
+          kind: body.p_kind, volume_ml: body.p_volume_ml, ingredients: body.p_ingredients, steps: body.p_steps,
+          created_at: new Date().toISOString(), deleted_at: null,
+        };
+        lab.recipes.push(row);
+        return json(row);
+      }
+      if (fn === 'archive_recipe') {
+        lab.recipes.filter((r) => r.family_id === body.p_family_id).forEach((r) => (r.deleted_at = new Date().toISOString()));
+        return json(null);
+      }
       if (fn === 'edit_note') {
         const e = lab.events.find((x) => x.id === body.p_id);
         if (!e) return json({ message: 'Note not found' }, 400);
@@ -213,7 +256,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);
