@@ -49,3 +49,6 @@ supabase/.temp
 dist-e2e/
 playwright-report/
 test-results/
+dist-real/
+e2e-real/.seed.json
+playwright-report-real/

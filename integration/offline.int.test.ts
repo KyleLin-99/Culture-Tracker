@@ -1,0 +1,184 @@
+// The phone's sync and offline queue, run against a real Supabase: the same
+// API calls, server functions and row-level security the app meets in the lab.
+// A phone here is a SQLite database (sql.js) plus the app's real offline code.
+import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import type { Client } from 'pg';
+
+import { flush, failedChanges } from '@/offline/outbox';
+import { localQueries } from '@/offline/queries';
+import { createRemote } from '@/offline/remote';
+import { createWriteRemote } from '@/offline/remoteWrite';
+import type { SqlDb } from '@/offline/sql';
+import { pull } from '@/offline/sync';
+import { localWriter } from '@/offline/writer';
+
+import { loadTestEnv, type TestEnv } from './env';
+import { adminDb, localToday, must, newLab, newPhone } from './helpers';
+
+const env = loadTestEnv();
+if (!env && process.env.CI) throw new Error('CI: local Supabase not found (supabase status)');
+const suite = env ? describe : describe.skip;
+
+const TODAY = localToday();
+const YEAR_AGO = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+
+let admin: Client;
+let lab: Awaited<ReturnType<typeof newLab>>;
+const phones: (SqlDb & { close(): void })[] = [];
+
+/** A phone signed in to `lab`, with a first sync done. */
+async function phone(who = lab) {
+  const db = await newPhone();
+  phones.push(db);
+  const remote = createRemote(who.client);
+  const write = createWriteRemote(who.client);
+  let n = 0;
+  const writer = localWriter({ db, newId: () => crypto.randomUUID(), now: () => new Date(Date.now() + (n += 1)).toISOString(), initials: 'KL' });
+  const sync = async () => {
+    const sent = await flush(db, write);
+    await pull(db, remote, { accountId: who.accountId, historyFrom: YEAR_AGO });
+    return sent;
+  };
+  await sync();
+  return { db, writer, sync, q: localQueries(db) };
+}
+
+const serverId = async (code: string) =>
+  (await admin.query('select id from items where code = $1 and account_id = $2', [code, lab.accountId])).rows[0]?.id as string;
+
+suite('offline sync against real Supabase', () => {
+  beforeAll(async () => {
+    admin = await adminDb(env as TestEnv);
+    lab = await newLab(env as TestEnv, admin);
+    const c = lab.client;
+    // S with S-1, S-2, S-3; S-2 with S-2A, S-2B; S-2A with S-2A1 and two backups.
+    const origin = must(await c.from('items').insert({ account_id: lab.accountId, strain_id: lab.strainId, kind: 'origin', medium: 'spore_print', origin_prefix: 'S' }).select().single()) as { id: string };
+    await c.rpc('create_transfers', { p_parent_id: origin.id, p_count: 3, p_medium: 'agar', p_made_on: TODAY });
+    await c.rpc('create_transfers', { p_parent_id: await serverId('S-2'), p_count: 2, p_medium: 'agar', p_made_on: TODAY });
+    await c.rpc('create_transfers', { p_parent_id: await serverId('S-2A'), p_count: 1, p_medium: 'lc', p_made_on: TODAY });
+    await c.rpc('create_backups', { p_parent_id: await serverId('S-2A1'), p_count: 2, p_medium: 'slant', p_made_on: TODAY });
+  });
+
+  afterAll(async () => {
+    phones.forEach((p) => p.close());
+    await admin?.end();
+  });
+
+  it('copies the lab to a phone, and the phone answers lineage exactly like the server', async () => {
+    const { q } = await phone();
+    for (const code of ['S', 'S-2', 'S-2A1']) {
+      const id = await serverId(code);
+      const server = must(await lab.client.rpc('item_lineage', { p_item_id: id, p_direction: 'both' })) as { code: string; depth: number }[];
+      const local = await q.itemLineage(id, 'both');
+      expect(local.map((r) => [r.code, r.depth])).toEqual(server.map((r) => [r.code, r.depth]));
+    }
+    const serverTree = must(await lab.client.rpc('strain_tree', { p_strain_id: lab.strainId })) as { code: string }[];
+    expect((await q.strainTree(lab.strainId)).map((r) => r.code)).toEqual(serverTree.map((r) => r.code));
+  });
+
+  it('keeps old retired cultures off the phone, except ancestors of ones it keeps', async () => {
+    // W (2 years old, used) -> W-1 (old, used) -> W-1A (active): W and W-1 come down as ancestors.
+    // X (2 years old, used) is nobody's ancestor and stays off.
+    const old = '2024-01-15';
+    const c = lab.client;
+    for (const prefix of ['W', 'X']) {
+      must(await c.from('items').insert({ account_id: lab.accountId, strain_id: lab.strainId, kind: 'origin', medium: 'tissue', origin_prefix: prefix, made_on: old, status: 'used' }));
+    }
+    await c.rpc('create_transfers', { p_parent_id: await serverId('W'), p_count: 1, p_medium: 'agar', p_made_on: old });
+    await c.rpc('set_item_status', { p_item_id: await serverId('W-1'), p_status: 'used' });
+    await c.rpc('create_transfers', { p_parent_id: await serverId('W-1'), p_count: 1, p_medium: 'agar', p_made_on: '2024-02-01' });
+
+    const { q } = await phone();
+    const codes = (await q.lookupCode('W')).map((r) => r.code);
+    expect(codes).toEqual(expect.arrayContaining(['W', 'W-1', 'W-1A']));
+    expect(await q.lookupCode('X')).toEqual([]);
+  });
+
+  it('saves offline, then sends in order with the planned codes', async () => {
+    const p = await phone();
+    const s3 = await serverId('S-3');
+    const { ids } = await p.writer.createTransfers({ parentId: s3, count: 2, medium: 'agar', madeOn: TODAY });
+    const child = await p.writer.createTransfers({ parentId: ids[0], count: 1, medium: 'lc', madeOn: TODAY });
+    await p.writer.setItemStatus(ids[1], 'contaminated', undefined, 'trich');
+    await p.writer.addNote(lab.accountId, ids[0], 'fast');
+
+    expect(await p.sync()).toEqual({ sent: 4, failed: 0, offline: false });
+    const rows = (await admin.query('select code, status from items where id = any($1) order by code', [[...ids, ...child.ids]])).rows;
+    expect(rows).toEqual([
+      { code: 'S-3A', status: 'active' },
+      { code: 'S-3A1', status: 'active' },
+      { code: 'S-3B', status: 'contaminated' },
+    ]);
+    const events = (await admin.query("select type, note from events where item_id = any($1) or item_id = $2 order by occurred_at", [ids, s3])).rows;
+    expect(events.map((e) => e.type)).toEqual(expect.arrayContaining(['transferred', 'contaminated', 'note']));
+
+    // Sending again changes nothing on the server.
+    const before = (await admin.query('select count(*)::int as n from items where account_id = $1', [lab.accountId])).rows[0].n;
+    await flush(p.db, createWriteRemote(lab.client));
+    expect((await admin.query('select count(*)::int as n from items where account_id = $1', [lab.accountId])).rows[0].n).toBe(before);
+  });
+
+  it('two phones offline pick the same code: the first keeps it, the second relabels', async () => {
+    const a = await phone();
+    const b = await phone();
+    const s1 = await serverId('S-1');
+    const fromA = await a.writer.createTransfers({ parentId: s1, count: 1, medium: 'agar', madeOn: TODAY });
+    const fromB = await b.writer.createTransfers({ parentId: s1, count: 1, medium: 'agar', madeOn: TODAY });
+    const childB = await b.writer.createTransfers({ parentId: fromB.ids[0], count: 1, medium: 'agar', madeOn: TODAY });
+    expect((await a.writer.readItems(fromA.ids))[0].code).toBe('S-1A');
+    expect((await b.writer.readItems(fromB.ids))[0].code).toBe('S-1A');
+
+    await a.sync();
+    await b.sync();
+
+    expect((await b.writer.readItems([...fromB.ids, ...childB.ids])).map((i) => i.code)).toEqual(['S-1B', 'S-1B1']);
+    const relabels = await b.q.openRelabels();
+    expect(relabels.map((r) => `${r.old_code}>${r.new_code}`)).toEqual(['S-1A>S-1B', 'S-1A1>S-1B1']);
+
+    // Marking one relabeled reaches the server and the other phone.
+    await b.writer.resolveRelabel(relabels[0].id);
+    await b.sync();
+    await a.sync();
+    expect((await a.q.openRelabels()).map((r) => r.old_code)).toEqual(['S-1A1']);
+  });
+
+  it('a change the server refuses is undone on the phone with the reason', async () => {
+    const p = await phone();
+    const target = await serverId('S-2B');
+    await p.writer.setItemStatus(target, 'used');
+    // Meanwhile the culture was removed (soft-deleted) on the server.
+    await admin.query('update items set deleted_at = now() where id = $1', [target]);
+
+    const result = await p.sync();
+    expect(result.failed).toBe(1);
+    expect((await failedChanges(p.db))[0].error).toMatch(/Item not found/);
+    expect((await admin.query('select status from items where id = $1', [target])).rows[0].status).toBe('active');
+  });
+
+  it('a new strain made offline syncs once, even if sent twice', async () => {
+    const p = await phone();
+    const strain = await p.writer.createStrain(lab.accountId, 'Lion’s Mane', 'Hericium erinaceus');
+    await p.sync();
+    await flush(p.db, createWriteRemote(lab.client)); // nothing queued; harmless
+    const rows = (await admin.query('select name from strains where id = $1', [strain.id])).rows;
+    expect(rows).toEqual([{ name: 'Lion’s Mane' }]);
+  });
+
+  it('another lab sees none of this, and its changes into this lab are refused', async () => {
+    const other = await newLab(env as TestEnv, admin, 'Other lab');
+    const p = await phone(other);
+    expect(await p.q.lookupCode('S')).toEqual([]);
+    expect(await p.q.listStrains()).toHaveLength(1); // only its own
+
+    const write = createWriteRemote(other.client);
+    await expect(
+      write.applyItems([
+        {
+          id: crypto.randomUUID(), account_id: other.accountId, strain_id: other.strainId, parent_id: await serverId('S-1'),
+          kind: 'transfer', medium: 'agar', origin_prefix: null, origin_number: null, position: 9, backup_number: null,
+          made_on: TODAY, media_batch_id: null, location: null, notes: null, generation: 2, expected_code: 'S-1I',
+        },
+      ]),
+    ).rejects.toMatchObject({ message: expect.stringMatching(/not found|violates/i) });
+  });
+});

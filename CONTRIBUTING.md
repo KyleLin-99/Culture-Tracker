@@ -4,7 +4,7 @@
 
 1. Branch from `main`: `feat/short-name` or `fix/short-name`.
 2. Make the change with its tests (see `docs/TESTING.md`).
-3. Run `npm run check` (types, lint, unit tests). If you touched SQL and have Docker running: `npx supabase start` then `npm run test:db`.
+3. Run `npm run check` (types, lint, unit tests). With Docker running and `npx supabase start`: `npm run test:db` for SQL changes, `npm run test:integration` for sync or offline changes.
 4. Push and open a pull request. Fill in the checklist.
 5. CI runs (types, lint, unit, database, screens, tests included). Claude reviews the diff and comments. No tests needed? Add the `no-tests-needed` label and say why.
 6. Squash-merge when CI is green. Delete the branch.
