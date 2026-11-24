@@ -9,6 +9,7 @@ import * as Crypto from 'expo-crypto';
 import { type BackupMedium, refreshDays } from '@/domain/backups';
 import { todayLocal } from '@/domain/cultureCode';
 import { currentRecipes } from '@/domain/recipes';
+import type { StatsRow } from '@/domain/stats';
 import type {
   ColonizationCheck,
   Ingredient,
@@ -258,15 +259,31 @@ export async function itemChecks(itemIds: string[]): Promise<ColonizationCheck[]
   if (!itemIds.length) return [];
   const local = await localReader();
   if (local) return local.itemChecks(itemIds);
-  return unwrap(
-    await supabase
-      .from('colonization_checks')
-      .select('id, item_id, checked_on, percent, radius_mm, note, source, created_at')
-      .in('item_id', itemIds)
-      .is('deleted_at', null)
-      .order('checked_on')
-      .order('created_at'),
-  );
+  // In chunks, so a long list (stats over many cultures) stays within URL limits.
+  const out: ColonizationCheck[] = [];
+  for (let i = 0; i < itemIds.length; i += 100) {
+    out.push(
+      ...unwrap<ColonizationCheck[]>(
+        await supabase
+          .from('colonization_checks')
+          .select('id, item_id, checked_on, percent, radius_mm, note, source, created_at')
+          .in('item_id', itemIds.slice(i, i + 100))
+          .is('deleted_at', null)
+          .order('checked_on')
+          .order('created_at'),
+      ),
+    );
+  }
+  return out.sort((a, b) => a.checked_on.localeCompare(b.checked_on) || a.created_at.localeCompare(b.created_at));
+}
+
+// --- Stats ----------------------------------------------------------------------
+
+/** Every transfer and backup made between two dates, for the Stats screen (stats_rows()). */
+export async function statsRows(from: string, to: string): Promise<StatsRow[]> {
+  const local = await localReader();
+  if (local) return local.statsRows(from, to);
+  return unwrap(await supabase.rpc('stats_rows', { p_from: from, p_to: to }));
 }
 
 /** Logs how far a culture has grown: percent of the plate and/or radius in mm. */

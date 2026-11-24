@@ -17,6 +17,8 @@ import type {
   TreeRow,
 } from '@/domain/types';
 
+import type { StatsRow } from '@/domain/stats';
+
 import type { SqlDb } from './sql';
 
 type ItemRow = Omit<Item, 'aliases'> & {
@@ -169,6 +171,29 @@ export function localQueries(db: SqlDb) {
         'select backup_refresh_days from lab_settings where deleted_at is null limit 1',
       );
       return row ? (JSON.parse(row.backup_refresh_days) as Record<string, unknown>) : {};
+    },
+
+    /** Same rows as stats_rows() on the server, from the phone's copy (its history window). */
+    async statsRows(from: string, to: string): Promise<StatsRow[]> {
+      const contaminated = `(i.status = 'contaminated' or exists (select 1 from events e
+        where e.item_id = i.id and e.type = 'contaminated' and e.deleted_at is null))`;
+      const rows = await db.all<Omit<StatsRow, 'contaminated'> & { contaminated: number }>(
+        `select i.id, i.strain_id, s.name as strain_name, i.kind, i.medium, i.generation, i.made_on, i.status,
+                ${contaminated} as contaminated,
+                m.id as batch_id, m.code as batch_code, r.id as run_id, r.code as run_code,
+                rc.family_id as recipe_family,
+                (select x.name from recipes x where x.family_id = rc.family_id order by x.version desc limit 1) as recipe_name
+         from items i
+         join strains s on s.id = i.strain_id
+         left join media_batches m on m.id = i.media_batch_id
+         left join sterilization_runs r on r.id = m.sterilization_run_id
+         left join recipes rc on rc.id = m.recipe_id
+         where i.kind in ('transfer', 'backup') and i.deleted_at is null and i.made_on between ? and ?
+           and (i.status <> 'discarded' or ${contaminated})
+         order by i.made_on, i.id`,
+        [from, to],
+      );
+      return rows.map((r) => ({ ...r, contaminated: !!r.contaminated }));
     },
 
     async listRuns(limit = 30): Promise<SterilizationRun[]> {

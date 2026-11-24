@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { localQueries, type LocalQueries } from '../queries';
 import { migrate } from '../schema';
 import { pull } from '../sync';
-import { ACCOUNT, fakeRemote, standardLab, STRAIN, tick } from '../testing/fakeLab';
+import { ACCOUNT, builder, emptyLab, fakeRemote, standardLab, STRAIN, tick } from '../testing/fakeLab';
 import { openTestDb } from '../testing/sqljsDb';
 
 let q: LocalQueries;
@@ -166,5 +166,102 @@ describe('backups due', () => {
 
   it('reads the lab\'s saved refresh ages from its copy', async () => {
     expect(await q.backupRefreshSettings()).toEqual({ slant: 365 });
+  });
+});
+
+// statsRows() is the phone's stats_rows() (supabase/migrations/*_stats_rows.sql).
+// Its own lab, so these plates don't change what the tests above see.
+describe('statsRows', () => {
+  let sq: LocalQueries;
+  let closeStats: () => void;
+  const FROM = '2026-11-01';
+  const TO = '2026-11-30';
+
+  beforeAll(async () => {
+    const db = await openTestDb();
+    closeStats = db.close;
+    await migrate(db);
+    const lab = emptyLab();
+    lab.strains.push({ id: STRAIN, account_id: ACCOUNT, name: 'Blue Oyster', species: null, notes: null, created_at: tick(), updated_at: tick(), deleted_at: null });
+    lab.sterilization_runs.push({ id: 'run-1', account_id: ACCOUNT, code: 'SR-001', method: 'pressure_cooker', psi: 15, minutes: 90, run_on: '2026-10-30', notes: null, created_at: tick(), updated_at: tick(), deleted_at: null });
+    const recipe = (id: string, version: number, name: string) => ({
+      id, account_id: ACCOUNT, family_id: 'fam-pda', version, name, kind: 'agar', volume_ml: 500,
+      ingredients: [], steps: null, created_at: tick(), updated_at: tick(), deleted_at: null,
+    });
+    // The batch was made from v1; the recipe has since been renamed in v2 and v3.
+    lab.recipes.push(recipe('pda-1', 1, 'PDA'), recipe('pda-3', 3, 'PDA lean'), recipe('pda-2', 2, 'PDA 2%'));
+    lab.media_batches.push({ id: 'mb-1', account_id: ACCOUNT, code: 'MB-001', kind: 'agar', recipe: 'PDA', sterilization_run_id: 'run-1', recipe_id: 'pda-1', volume_ml: 250, made_on: '2026-10-30', notes: null, created_at: tick(), updated_at: tick(), deleted_at: null });
+
+    const b = builder(lab);
+    b.origin('S', null, { madeOn: '2026-11-10' }); // origins are never counted
+    b.transfer('S', { madeOn: '2026-10-31' }); // S-1: the day before the range
+    b.transfer('S', { madeOn: FROM, mediaBatchId: 'mb-1' }); // S-2: first day, included
+    b.transfer('S', { madeOn: TO }); // S-3: last day, included
+    b.transfer('S', { madeOn: '2026-12-01' }); // S-4: the day after
+    b.transfer('S-2', { madeOn: '2026-11-05', status: 'contaminated' }); // S-2A
+    b.transfer('S-2', { madeOn: '2026-11-05', status: 'discarded' }); // S-2B: contaminated, then discarded
+    b.transfer('S-2', { madeOn: '2026-11-05', status: 'discarded' }); // S-2C: clean, discarded
+    b.transfer('S-2', { madeOn: '2026-11-05' }); // S-2D: contaminated event removed
+    b.transfer('S-2', { madeOn: '2026-11-05', status: 'used' }); // S-2E: contaminated, then used
+    b.transfer('S-2', { madeOn: '2026-11-05', status: 'discarded' }); // S-2F: discarded, removed contaminated event
+    b.backup('S-2', { madeOn: '2026-11-06' }); // S-2(1)
+
+    const event = (id: string, itemId: string, type: string, deletedAt: string | null = null) => ({
+      id, account_id: ACCOUNT, item_id: itemId, type, occurred_at: '2026-11-07T10:00:00Z', note: null, contam_type: null,
+      photo_key: null, created_at: tick(), updated_at: tick(), deleted_at: deletedAt,
+    });
+    lab.events.push(
+      event('ev-b', 'id-S-2B', 'contaminated'),
+      event('ev-d', 'id-S-2D', 'contaminated', '2026-11-08T00:00:00Z'),
+      event('ev-d-note', 'id-S-2D', 'note'),
+      event('ev-e', 'id-S-2E', 'contaminated'),
+      event('ev-f', 'id-S-2F', 'contaminated', '2026-11-08T00:00:00Z'),
+    );
+    await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: '2025-11-23' });
+    sq = localQueries(db);
+  });
+  afterAll(() => closeStats());
+
+  it('counts transfers and backups made in the range, both ends included, and no origins', async () => {
+    const rows = await sq.statsRows(FROM, TO);
+    expect(rows.map((r) => r.id).sort()).toEqual(
+      ['id-S-2', 'id-S-2(1)', 'id-S-2A', 'id-S-2B', 'id-S-2D', 'id-S-2E', 'id-S-3'].sort(),
+    );
+    expect(rows.find((r) => r.id === 'id-S-2(1)')!.kind).toBe('backup');
+    expect(rows.map((r) => r.made_on)).toEqual([...rows.map((r) => r.made_on)].sort());
+  });
+
+  it('marks a plate contaminated by its status or a live contaminated event, not a removed one', async () => {
+    const rows = await sq.statsRows(FROM, TO);
+    const c = Object.fromEntries(rows.map((r) => [r.id, r.contaminated]));
+    expect(c).toEqual({
+      'id-S-2': false,
+      'id-S-2(1)': false,
+      'id-S-2A': true, // status contaminated
+      'id-S-2B': true, // event, then discarded
+      'id-S-2D': false, // event removed
+      'id-S-2E': true, // event, then used
+      'id-S-3': false,
+    });
+    expect(rows.every((r) => typeof r.contaminated === 'boolean')).toBe(true);
+  });
+
+  it('leaves out clean discarded plates but keeps contaminated ones that were discarded', async () => {
+    const ids = (await sq.statsRows(FROM, TO)).map((r) => r.id);
+    expect(ids).toContain('id-S-2B');
+    expect(ids).not.toContain('id-S-2C');
+    expect(ids).not.toContain('id-S-2F'); // its only contaminated event was removed
+  });
+
+  it("fills batch and run codes and the recipe family's current name", async () => {
+    const rows = await sq.statsRows(FROM, TO);
+    expect(rows.find((r) => r.id === 'id-S-2')).toMatchObject({
+      strain_id: STRAIN, strain_name: 'Blue Oyster', generation: 1,
+      batch_id: 'mb-1', batch_code: 'MB-001', run_id: 'run-1', run_code: 'SR-001',
+      recipe_family: 'fam-pda', recipe_name: 'PDA lean',
+    });
+    expect(rows.find((r) => r.id === 'id-S-3')).toMatchObject({
+      batch_id: null, batch_code: null, run_id: null, run_code: null, recipe_family: null, recipe_name: null,
+    });
   });
 });

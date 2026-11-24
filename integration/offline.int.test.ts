@@ -230,6 +230,27 @@ suite('offline sync against real Supabase', () => {
     expect((await p.q.activeBackups()).map((b) => b.code)).toEqual(server);
   });
 
+  it('stats rows on the phone match stats_rows() on the server', async () => {
+    // A contaminated plate, a contaminated-then-retired one, and a clean discarded one (not counted).
+    const kids = (await admin.query("select id from items where account_id = $1 and kind = 'transfer' and status = 'active' order by code limit 3", [lab.accountId])).rows.map((r) => r.id);
+    must(await lab.client.rpc('set_item_status', { p_item_id: kids[0], p_status: 'contaminated' }));
+    must(await lab.client.rpc('set_item_status', { p_item_id: kids[1], p_status: 'contaminated' }));
+    must(await lab.client.rpc('set_item_status', { p_item_id: kids[1], p_status: 'discarded' }));
+    must(await lab.client.rpc('set_item_status', { p_item_id: kids[2], p_status: 'discarded' }));
+
+    const from = '2000-01-01';
+    const server = (must(await lab.client.rpc('stats_rows', { p_from: from, p_to: TODAY })) as Record<string, unknown>[])
+      .map((r) => ({ ...r, made_on: String(r.made_on) }));
+    const p = await phone();
+    const local = await p.q.statsRows(from, TODAY);
+    const pick = (r: Record<string, unknown>) =>
+      [r.id, r.strain_name, r.kind, r.generation, r.made_on, r.status, r.contaminated, r.batch_code, r.run_code, r.recipe_name];
+    expect(server.length).toBeGreaterThan(0);
+    expect(local.map(pick)).toEqual(server.map(pick));
+    expect(local.find((r) => r.id === kids[1])?.contaminated).toBe(true);
+    expect(local.some((r) => r.id === kids[2])).toBe(false);
+  });
+
   it('another lab sees none of this, and its changes into this lab are refused', async () => {
     const other = await newLab(env as TestEnv, admin, 'Other lab');
     const p = await phone(other);

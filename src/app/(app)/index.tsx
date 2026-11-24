@@ -100,6 +100,7 @@ export default function Home() {
           <Button title="Batches and runs" variant="secondary" onPress={() => router.push('/batches')} />
           <Button title="Recipes" variant="secondary" onPress={() => router.push('/recipes')} />
           <Button title="Contamination trace" variant="secondary" onPress={() => router.push('/trace')} />
+          <Button title="Stats" variant="secondary" onPress={() => router.push('/stats')} />
 
           <SectionTitle>Recent</SectionTitle>
           <ErrorText>{recent.error}</ErrorText>
