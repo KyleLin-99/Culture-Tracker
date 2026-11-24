@@ -172,12 +172,65 @@ describe('schema', () => {
       note: null, source: 'manual', created_at: '2024-01-05T00:00:00Z', updated_at: '2024-01-05T00:00:00Z', deleted_at: null,
     });
     await migrate(old);
-    expect((await old.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(4);
+    expect((await old.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(SCHEMA_VERSION);
     expect((await old.first<{ n: number }>('select count(*) as n from outbox'))!.n).toBe(1);
 
     await pull(old, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
     expect((await old.first<{ n: number }>('select count(*) as n from items'))!.n).toBe(lab.items.length);
     expect((await localQueries(old).itemChecks(['id-S'])).map((c) => [c.id, c.percent, c.radius_mm])).toEqual([['ck-1', 30, 12]]);
     old.close();
+  });
+
+  it('upgrades a phone from the version before lab settings: keeps its copy, then pulls the settings', async () => {
+    const old = await openTestDb();
+    await migrate(old, SCHEMA_VERSION - 1);
+    const lab = standardLab();
+    await upsertRows(old, 'items', lab.items.slice(0, 3));
+    await setMeta(old, 'account_id', ACCOUNT);
+    await setMeta(old, 'first_pull_done', '1');
+    await old.run("insert into outbox (op, payload, created_at) values ('status', '{}', '2026-11-23T12:00:00Z')");
+    expect(await localQueries(old).recentItems(100)).toHaveLength(3);
+
+    // Saved long ago on another device: the first pull of a new table takes every row.
+    lab.lab_settings.push({ id: 'ls-1', account_id: ACCOUNT, backup_refresh_days: { lc: 90 },
+      created_at: '2024-01-05T00:00:00Z', updated_at: '2024-01-05T00:00:00Z', deleted_at: null });
+    await migrate(old);
+    expect((await old.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(SCHEMA_VERSION);
+    expect((await old.first<{ n: number }>('select count(*) as n from outbox'))!.n).toBe(1);
+    expect(await localQueries(old).backupRefreshSettings()).toEqual({});
+
+    await pull(old, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect((await old.first<{ n: number }>('select count(*) as n from items'))!.n).toBe(lab.items.length);
+    expect(await localQueries(old).backupRefreshSettings()).toEqual({ lc: 90 });
+    old.close();
+  });
+});
+
+describe('lab settings', () => {
+  const settings = (days: Record<string, number>) => ({
+    id: 'ls-1', account_id: ACCOUNT, backup_refresh_days: days, created_at: tick(), updated_at: tick(), deleted_at: null,
+  });
+
+  it('picks up a later change to the refresh ages', async () => {
+    const lab = standardLab();
+    lab.lab_settings.push(settings({ slant: 365 }));
+    const { remote } = fakeRemote(lab);
+    await pull(db, remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    Object.assign(lab.lab_settings[0], { backup_refresh_days: { slant: 200, agar: 30 }, updated_at: tick() });
+    await pull(db, remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+
+    expect(await count('lab_settings')).toBe(1);
+    expect(await localQueries(db).backupRefreshSettings()).toEqual({ slant: 200, agar: 30 });
+  });
+
+  it('are wiped when a different lab signs in, so it never sees the old lab\'s ages', async () => {
+    const lab = standardLab();
+    lab.lab_settings.push(settings({ slant: 365 }));
+    await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect(await count('lab_settings')).toBe(1);
+
+    await pull(db, fakeRemote(emptyLab()).remote, { accountId: 'acct-2', historyFrom: HISTORY_FROM });
+    expect(await count('lab_settings')).toBe(0);
+    expect(await localQueries(db).backupRefreshSettings()).toEqual({});
   });
 });

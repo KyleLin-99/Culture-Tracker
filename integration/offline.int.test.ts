@@ -221,6 +221,15 @@ suite('offline sync against real Supabase', () => {
     expect(await p.q.itemChecks([s1])).toEqual([]);
   });
 
+  it('backup refresh ages saved online reach the phone', async () => {
+    must(await lab.client.rpc('set_backup_refresh', { p_account_id: lab.accountId, p_days: { slant: 365, agar: 45 } }));
+    const p = await phone();
+    expect(await p.q.backupRefreshSettings()).toEqual({ slant: 365, agar: 45 });
+    // Every active backup on the phone is one the server lists too.
+    const server = (await admin.query("select code from items where account_id = $1 and kind = 'backup' and status = 'active' and deleted_at is null order by made_on, code", [lab.accountId])).rows.map((r) => r.code);
+    expect((await p.q.activeBackups()).map((b) => b.code)).toEqual(server);
+  });
+
   it('another lab sees none of this, and its changes into this lab are refused', async () => {
     const other = await newLab(env as TestEnv, admin, 'Other lab');
     const p = await phone(other);

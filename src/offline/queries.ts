@@ -155,6 +155,22 @@ export function localQueries(db: SqlDb) {
       );
     },
 
+    /** Active backups, oldest first, with their strain (for "Backups due"). */
+    async activeBackups(): Promise<ItemWithRefs[]> {
+      const rows = await db.all<ItemRow>(
+        `${ITEM_SELECT} where i.deleted_at is null and i.kind = 'backup' and i.status = 'active' order by i.made_on, i.code`,
+      );
+      return rows.map(toItem);
+    },
+
+    /** The lab's saved backup refresh ages (empty when never changed). */
+    async backupRefreshSettings(): Promise<Record<string, unknown>> {
+      const row = await db.first<{ backup_refresh_days: string }>(
+        'select backup_refresh_days from lab_settings where deleted_at is null limit 1',
+      );
+      return row ? (JSON.parse(row.backup_refresh_days) as Record<string, unknown>) : {};
+    },
+
     async listRuns(limit = 30): Promise<SterilizationRun[]> {
       return db.all<SterilizationRun>(
         'select * from sterilization_runs where deleted_at is null order by run_on desc, created_at desc limit ?',

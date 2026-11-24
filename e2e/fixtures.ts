@@ -4,8 +4,8 @@
 import { test as base, type Page, type Route } from '@playwright/test';
 
 const USER_ID = '00000000-0000-4000-8000-00000000000a';
-const ACCOUNT_ID = '00000000-0000-4000-8000-0000000000ac';
-const STRAIN_ID = '00000000-0000-4000-8000-000000000051';
+export const ACCOUNT_ID = '00000000-0000-4000-8000-0000000000ac';
+export const STRAIN_ID = '00000000-0000-4000-8000-000000000051';
 const MADE_ON = '2026-11-23';
 
 type Row = Record<string, unknown> & { id: string; code: string; parent_id: string | null };
@@ -119,6 +119,8 @@ export type Lab = {
   items: Row[];
   runs: Record<string, unknown>[];
   batches: Record<string, unknown>[];
+  /** The lab's settings row, once saved. */
+  settings: { backup_refresh_days: Record<string, number> } | null;
   /** Growth check-ins. */
   checks: Record<string, unknown>[];
   /** Every saved recipe version. */
@@ -154,7 +156,12 @@ async function mockSupabase(page: Page, lab: Lab) {
     if (path.startsWith('/rest/v1/items')) {
       const id = url.searchParams.get('id')?.replace(/^eq\./, '');
       if (single && id) return json(lab.items.find((i) => i.id === id) ?? {}, lab.items.some((i) => i.id === id) ? 200 : 406);
-      return json([...lab.items].reverse());
+      const kind = url.searchParams.get('kind')?.replace(/^eq\./, '');
+      const status = url.searchParams.get('status')?.replace(/^eq\./, '');
+      return json([...lab.items].reverse().filter((i) => (!kind || i.kind === kind) && (!status || i.status === status)));
+    }
+    if (path.startsWith('/rest/v1/lab_settings')) {
+      return json(lab.settings ? [lab.settings] : []);
     }
     if (path.startsWith('/rest/v1/events')) {
       if (req.method() === 'POST') {
@@ -226,6 +233,10 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
+      if (fn === 'set_backup_refresh') {
+        lab.settings = { backup_refresh_days: { ...lab.settings?.backup_refresh_days, ...(body.p_days as Record<string, number>) } };
+        return json({ id: 'settings-1', account_id: ACCOUNT_ID, ...lab.settings });
+      }
       if (fn === 'apply_check') {
         const row = {
           id: body.p_id, account_id: ACCOUNT_ID, item_id: body.p_item_id, checked_on: body.p_checked_on,
@@ -294,7 +305,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);
