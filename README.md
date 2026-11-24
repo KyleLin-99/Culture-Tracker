@@ -86,16 +86,21 @@ database tests locally).
 4. From any culture: make backups, mark it contaminated, retire it, add, edit
    or remove notes, and see its lineage and history. Type a code on the home
    screen to jump to it; **Home** in the header gets you back from anywhere.
-5. **Recipes**: save your agar and LC recipes once (ingredients for a batch
+5. **Growth checks**: on any culture, log how far it has grown (percent of the
+   plate and/or colony radius in mm), offline too. The app works out its growth
+   rate and compares it with its ancestors' ("vigor by generation"). A culture
+   growing under 70% of its ancestors' average, over 2+ checks, is flagged as
+   possibly losing vigor (senescence), so you can go back to an earlier backup.
+6. **Recipes**: save your agar and LC recipes once (ingredients for a batch
    size, steps). They scale to any volume. Editing saves a new version, so old
    batches keep the version they were made from.
-6. **Batches and runs**: log each sterilization or pasteurization run
+7. **Batches and runs**: log each sterilization or pasteurization run
    (`SR-001`) and the media batches made in it (`MB-001`), picking the recipe
    and how much you made. Then pick the batch when you transfer.
-7. **Contamination trace**: ranks what contaminated cultures share that clean
+8. **Contamination trace**: ranks what contaminated cultures share that clean
    ones don't (parent, media batch, sterilization run, recipe, day made), with
    relative risk and a Fisher's exact p value.
-8. **Offline on your phone**: the app keeps a copy of your lab (a year of
+9. **Offline on your phone**: the app keeps a copy of your lab (a year of
    history plus everything active) and syncs it in the background. Lookups,
    lineage, transfers, backups, status changes and notes all work with no
    signal and sync when you're back online. If another device used a code

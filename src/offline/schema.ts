@@ -4,7 +4,7 @@ import type { SqlDb } from './sql';
 // minus server-only rules: the server stays the source of truth.
 // Bump SCHEMA_VERSION and add a step to MIGRATIONS for any change.
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -77,6 +77,16 @@ const MIGRATIONS: Record<number, string> = {
     alter table media_batches add column recipe_id text;
     alter table media_batches add column volume_ml real;
   `,
+  // Colonization checks: logged on the phone (offline too) and synced. All of
+  // them are kept, old ones included, since vigor compares with ancestors.
+  4: `
+    create table colonization_checks (
+      id text primary key, account_id text not null, item_id text not null, checked_on text not null,
+      percent real, radius_mm real, note text, source text not null default 'manual',
+      created_at text, updated_at text not null, deleted_at text, local_pending integer not null default 0
+    );
+    create index colonization_checks_item_idx on colonization_checks (item_id, checked_on);
+  `,
 };
 
 /** Creates or upgrades the local tables. Safe to call on every app start. */
@@ -105,7 +115,7 @@ export async function setMeta(db: SqlDb, key: string, value: string | null): Pro
 export async function clearAll(db: SqlDb): Promise<void> {
   await db.transaction(async () => {
     await db.exec(
-      'delete from outbox; delete from relabels; delete from events; delete from items; delete from media_batches; delete from recipes; delete from sterilization_runs; delete from strains; delete from meta;',
+      'delete from outbox; delete from relabels; delete from events; delete from items; delete from colonization_checks; delete from media_batches; delete from recipes; delete from sterilization_runs; delete from strains; delete from meta;',
     );
   });
 }

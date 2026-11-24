@@ -20,6 +20,16 @@ export type LocalEvent = {
   occurred_at: string;
 };
 
+/** A colonization check as the phone logged it. */
+export type LocalCheck = {
+  id: string;
+  item_id: string;
+  checked_on: string;
+  percent: number | null;
+  radius_mm: number | null;
+  note: string | null;
+};
+
 export type OutboxOp =
   | { op: 'items'; summary: string; items: PlannedItem[]; event: LocalEvent | null }
   | {
@@ -45,7 +55,9 @@ export type OutboxOp =
       remove: boolean;
       prev_note: string | null;
       prev_deleted_at: string | null;
-    };
+    }
+  | { op: 'check'; summary: string; check: LocalCheck }
+  | { op: 'remove_check'; summary: string; id: string; prev_deleted_at: string | null };
 
 /** How queued changes reach the server: Supabase in the app (remoteWrite.ts), a fake in tests. */
 export interface WriteRemote {
@@ -55,6 +67,8 @@ export interface WriteRemote {
   insertStrain(strain: Extract<OutboxOp, { op: 'strain' }>['strain']): Promise<RemoteRow | null>;
   resolveRelabel(id: string, resolvedAt: string): Promise<RemoteRow | null>;
   editNote(op: Extract<OutboxOp, { op: 'note' }>): Promise<RemoteRow>;
+  applyCheck(check: LocalCheck): Promise<RemoteRow>;
+  removeCheck(id: string): Promise<RemoteRow>;
 }
 
 type OutboxRow = { seq: number; op: string; payload: string; status: string; error: string | null; created_at: string };
@@ -131,6 +145,12 @@ async function send(db: SqlDb, remote: WriteRemote, op: OutboxOp): Promise<void>
     case 'note':
       await upsertRows(db, 'events', [await remote.editNote(op)], true);
       return;
+    case 'check':
+      await upsertRows(db, 'colonization_checks', [await remote.applyCheck(op.check)], true);
+      return;
+    case 'remove_check':
+      await upsertRows(db, 'colonization_checks', [await remote.removeCheck(op.id)], true);
+      return;
   }
 }
 
@@ -143,6 +163,8 @@ function createdIds(op: OutboxOp): string[] {
       return [op.strain.id];
     case 'event':
       return [op.event.id];
+    case 'check':
+      return [op.check.id];
     default:
       return [];
   }
@@ -158,6 +180,10 @@ function dependsOn(op: OutboxOp, ids: Set<string>): boolean {
       return ids.has(op.event.item_id);
     case 'note':
       return ids.has(op.event_id);
+    case 'check':
+      return ids.has(op.check.item_id);
+    case 'remove_check':
+      return ids.has(op.id);
     default:
       return false;
   }
@@ -195,6 +221,12 @@ async function undo(db: SqlDb, op: OutboxOp): Promise<void> {
         op.prev_deleted_at,
         op.event_id,
       ]);
+      return;
+    case 'check':
+      await db.run('delete from colonization_checks where id = ? and local_pending = 1', [op.check.id]);
+      return;
+    case 'remove_check':
+      await db.run('update colonization_checks set deleted_at = ?, local_pending = 0 where id = ?', [op.prev_deleted_at, op.id]);
       return;
   }
 }

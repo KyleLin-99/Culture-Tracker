@@ -155,4 +155,29 @@ describe('schema', () => {
     expect((await localQueries(old).listRecipes()).map((r) => r.name)).toEqual(['MEA']);
     old.close();
   });
+
+  it('upgrades a phone on version 3: keeps its copy and pending changes, then pulls checks', async () => {
+    const old = await openTestDb();
+    // A phone on the version before colonization checks, with a synced copy and a queued change.
+    await migrate(old, 3);
+    const lab = standardLab();
+    await upsertRows(old, 'items', lab.items.slice(0, 3));
+    await setMeta(old, 'account_id', ACCOUNT);
+    await setMeta(old, 'first_pull_done', '1');
+    await old.run("insert into outbox (op, payload, created_at) values ('status', '{}', '2026-11-23T12:00:00Z')");
+
+    // Logged long ago on another device: the first pull of a new table takes every row.
+    lab.colonization_checks.push({
+      id: 'ck-1', account_id: ACCOUNT, item_id: 'id-S', checked_on: '2026-11-21', percent: 30, radius_mm: 12,
+      note: null, source: 'manual', created_at: '2024-01-05T00:00:00Z', updated_at: '2024-01-05T00:00:00Z', deleted_at: null,
+    });
+    await migrate(old);
+    expect((await old.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(4);
+    expect((await old.first<{ n: number }>('select count(*) as n from outbox'))!.n).toBe(1);
+
+    await pull(old, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect((await old.first<{ n: number }>('select count(*) as n from items'))!.n).toBe(lab.items.length);
+    expect((await localQueries(old).itemChecks(['id-S'])).map((c) => [c.id, c.percent, c.radius_mm])).toEqual([['ck-1', 30, 12]]);
+    old.close();
+  });
 });

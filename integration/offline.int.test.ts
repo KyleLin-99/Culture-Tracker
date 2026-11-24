@@ -205,6 +205,22 @@ suite('offline sync against real Supabase', () => {
     expect([batch.recipes, batch.volume_ml]).toEqual([{ name: 'MEA 2%', version: 1 }, 250]);
   });
 
+  it('growth checks logged offline reach the server once, and can be removed', async () => {
+    const p = await phone();
+    const s1 = await serverId('S-1');
+    const madeOn = (await admin.query('select made_on::text as d from items where id = $1', [s1])).rows[0].d as string;
+    const check = await p.writer.logCheck({ itemId: s1, checkedOn: madeOn, percent: 15, radiusMm: 6, note: 'even' });
+    await p.sync();
+    await p.sync(); // a second send is harmless
+    const rows = (await admin.query('select percent::float, radius_mm::float, note from colonization_checks where id = $1', [check.id])).rows;
+    expect(rows).toEqual([{ percent: 15, radius_mm: 6, note: 'even' }]);
+
+    await p.writer.removeCheck(check.id);
+    await p.sync();
+    expect((await admin.query('select deleted_at from colonization_checks where id = $1', [check.id])).rows[0].deleted_at).not.toBeNull();
+    expect(await p.q.itemChecks([s1])).toEqual([]);
+  });
+
   it('another lab sees none of this, and its changes into this lab are refused', async () => {
     const other = await newLab(env as TestEnv, admin, 'Other lab');
     const p = await phone(other);
@@ -221,5 +237,9 @@ suite('offline sync against real Supabase', () => {
         },
       ]),
     ).rejects.toMatchObject({ message: expect.stringMatching(/not found|violates/i) });
+    await expect(
+      write.applyCheck({ id: crypto.randomUUID(), item_id: await serverId('S-1'), checked_on: TODAY, percent: 5, radius_mm: null, note: null }),
+    ).rejects.toMatchObject({ message: 'Culture not found' });
+    expect(await p.q.itemChecks([await serverId('S-1')])).toEqual([]);
   });
 });

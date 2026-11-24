@@ -56,6 +56,23 @@ export const createWriteRemote = (supabase: SupabaseClient): WriteRemote => ({
     ) as RemoteRow;
   },
 
+  async applyCheck(c) {
+    return unwrap(
+      await supabase.rpc('apply_check', {
+        p_id: c.id,
+        p_item_id: c.item_id,
+        p_checked_on: c.checked_on,
+        p_percent: c.percent,
+        p_radius_mm: c.radius_mm,
+        p_note: c.note,
+      }),
+    ) as RemoteRow;
+  },
+
+  async removeCheck(id) {
+    return unwrap(await supabase.rpc('remove_check', { p_id: id })) as RemoteRow;
+  },
+
   async resolveRelabel(id, resolvedAt) {
     return unwrap(
       await supabase.from('relabels').update({ resolved_at: resolvedAt }).eq('id', id).select().maybeSingle(),

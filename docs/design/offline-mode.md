@@ -74,9 +74,18 @@ Sharing a lab with other people (roles: owner, tech, viewer) comes after this. S
 
 ## What step 2 does (built)
 
-- **Saving on the phone:** transfers, backups, new origins, status changes, notes (including edits and removals) and new strains are applied to the local copy at once and queued in an `outbox` table. Editing or removing a note that hasn't been sent yet changes the queued note instead of queueing a second change, so a removed unsent note never reaches the server. Codes are planned locally (`src/offline/planner.ts`) with the same rules as the database, including the 20-character limit.
+- **Saving on the phone:** transfers, backups, new origins, status changes, notes (including edits and removals), growth checks (logging and removing) and new strains are applied to the local copy at once and queued in an `outbox` table. Editing or removing a note that hasn't been sent yet changes the queued note instead of queueing a second change, so a removed unsent note never reaches the server. Codes are planned locally (`src/offline/planner.ts`) with the same rules as the database, including the 20-character limit.
 - **Sending:** each sync sends the queue in order before pulling. Every change carries ids made on the phone, and the server functions (`apply_items`, `apply_status`, `apply_event`) ignore a change they've already applied, so a retry after a dropped connection never duplicates anything. Pulls never overwrite a change still waiting to be sent.
 - **Conflicts:** if another device already used a position, `apply_items` takes the next free one and writes a `relabels` row (old code → new code). Children follow their renumbered parent. The home screen lists them under **Relabel these plates** until you tap Done (on phone or web).
 - **Refusals:** if the server rejects a change, it's undone on the phone along with any queued change that builds on it, and listed under **Couldn't save** with the reason until dismissed.
 - **Online:** the same path runs, then syncs at once, so the screen shows the server's final codes.
 - **Tests:** 18 pgTAP tests for the server functions (idempotency, renumbering, cascading relabels, isolation); 11 Jest tests run the whole flow on SQLite against a fake server with the same rules (offline queueing, ordered sending, half-sent retries, conflicts, cascading rollback).
+
+## Growth checks
+
+Colonization checks sync both ways like events, with one difference: the first
+pull brings down every check, not just the last 365 days, because a culture's
+vigor is compared with its ancestors' growth, and ancestors are often older.
+Checks are small, so this stays cheap. Logging is `apply_check()` and removal is
+`remove_check()`, both idempotent; removing a check that hasn't been sent yet
+drops it from the queue instead.
