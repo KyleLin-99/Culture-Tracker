@@ -94,6 +94,9 @@ export default function Home() {
         </View>
       ) : (
         <>
+          {membership.role === 'viewer' && (
+            <Muted>You&apos;re a viewer in {membership.accounts?.name ?? 'this lab'}: you can look at everything, but not change it.</Muted>
+          )}
           <Button title="Scan label" onPress={() => router.push('/scan')} />
           <PendingWork />
           <BackupsDue />

@@ -27,7 +27,19 @@ const describe = (c: Pick<ColonizationCheck, 'percent' | 'radius_mm'>) =>
  * Growth check-ins for one culture, its growth rate, and how it compares with its
  * ancestors (senescence). `ancestors` oldest first.
  */
-export function GrowthSection({ culture, ancestors, canLog }: { culture: Culture; ancestors: TreeRow[]; canLog: boolean }) {
+export function GrowthSection({
+  culture,
+  ancestors,
+  canLog,
+  canEdit = true,
+}: {
+  culture: Culture;
+  ancestors: TreeRow[];
+  /** Show "Log growth check" (an active culture, someone who can record work). */
+  canLog: boolean;
+  /** Show "Remove" on checks (not for viewers). */
+  canEdit?: boolean;
+}) {
   const ids = [...ancestors.map((a) => a.id), culture.id];
   const checks = useData(() => itemChecks(ids), ids.join(','));
 
@@ -180,9 +192,9 @@ export function GrowthSection({ culture, ancestors, canLog }: { culture: Culture
                     <Button title="Keep" variant="secondary" onPress={() => setRemoving(null)} />
                   </View>
                 </View>
-              ) : (
+              ) : canEdit ? (
                 <LinkText title="Remove" onPress={() => setRemoving(c.id)} />
-              )}
+              ) : null}
             </Card>
           ))}
         </View>

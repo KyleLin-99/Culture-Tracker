@@ -11,7 +11,8 @@ import { space } from '@/ui/theme';
 
 /** Lab settings. For now: how often each kind of backup needs refreshing. */
 export default function Settings() {
-  const { account_id } = useMembership();
+  const { account_id, role } = useMembership();
+  const isOwner = role === 'owner';
   const [days, setDays] = useState<Record<BackupMedium, string> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +73,11 @@ export default function Settings() {
               </View>
             </View>
           ))}
-          <Button title="Save" busy={busy} onPress={save} />
+          {isOwner ? (
+            <Button title="Save" busy={busy} onPress={save} />
+          ) : (
+            <Muted>Only the lab&apos;s owners can change these.</Muted>
+          )}
           {saved && <Muted>Saved.</Muted>}
         </View>
       )}

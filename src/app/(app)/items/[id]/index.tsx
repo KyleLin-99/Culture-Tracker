@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { useMembership } from '@/auth/AuthProvider';
+import { useCanWrite, useMembership } from '@/auth/AuthProvider';
 import { labelDate, MAX_CODE_LENGTH, MEDIUM_LABEL, roomLeft, STATUS_LABEL } from '@/domain/cultureCode';
 import type { Item, ItemStatus, Medium } from '@/domain/types';
 import { addNote, changeNote, createBackups, getItem, itemEvents, itemLineage, setItemStatus } from '@/lib/api';
@@ -26,6 +26,7 @@ const BACKUP_MEDIA: { value: Medium; label: string }[] = [
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { account_id } = useMembership();
+  const canWrite = useCanWrite();
   const item = useData(() => getItem(id), id);
   const lineage = useData(() => itemLineage(id, 'both'), id);
   const events = useData(() => itemEvents(id), id);
@@ -120,13 +121,14 @@ export default function ItemDetail() {
       <RefreshSection
         item={i}
         parent={lineage.data?.find((r) => r.depth === -1) ?? null}
+        canWrite={canWrite}
         onChanged={() => void Promise.all([item.reload(), lineage.reload(), events.reload()])}
       />
 
       <ErrorText>{error}</ErrorText>
 
       {/* One-tap actions */}
-      {active && (
+      {active && canWrite && (
         <View style={{ gap: space.sm }}>
           <Button
             title="Transfer"
@@ -206,7 +208,7 @@ export default function ItemDetail() {
       {i.status === 'contaminated' && (
         <Button title="Trace likely cause" onPress={() => router.push('/trace')} />
       )}
-      {!active && (
+      {!active && canWrite && (
         <Button title="Mark active again" variant="secondary" busy={busy} onPress={() => run(() => setItemStatus(i.id, 'active'))} />
       )}
 
@@ -215,7 +217,7 @@ export default function ItemDetail() {
         variant="secondary"
         onPress={() => router.push({ pathname: '/labels', params: { ids: i.id } })}
       />
-      <Button title="Add note" variant="secondary" onPress={() => open('note')} />
+      {canWrite && <Button title="Add note" variant="secondary" onPress={() => open('note')} />}
       {panel === 'note' && (
         <Card>
           <Field label="Note" value={text} onChangeText={setText} multiline placeholder="Fast, rhizomorphic growth" />
@@ -227,7 +229,8 @@ export default function ItemDetail() {
         <GrowthSection
           culture={i}
           ancestors={lineage.data.filter((r) => r.depth < 0).sort((a, b) => a.depth - b.depth)}
-          canLog={active}
+          canLog={active && canWrite}
+          canEdit={canWrite}
         />
       )}
 
@@ -275,7 +278,7 @@ export default function ItemDetail() {
             )}
 
             {/* Only notes can change; transfers, backups and status changes are a fixed record. */}
-            {e.type === 'note' && editing?.id !== e.id && removing !== e.id && (
+            {canWrite && e.type === 'note' && editing?.id !== e.id && removing !== e.id && (
               <View style={[styles.row, { gap: space.lg }]}>
                 <LinkText
                   title="Edit"

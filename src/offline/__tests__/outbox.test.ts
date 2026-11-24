@@ -10,7 +10,7 @@ import { pull } from '../sync';
 import { ACCOUNT, builder, type FakeLab, fakeRemote, standardLab, STRAIN } from '../testing/fakeLab';
 import { fakeServer } from '../testing/fakeServer';
 import { openTestDb } from '../testing/sqljsDb';
-import { localWriter, type LocalWriter } from '../writer';
+import { localWriter, type LocalWriter, VIEWER_REFUSAL } from '../writer';
 
 let db: SqlDb & { close(): void };
 let lab: FakeLab;
@@ -454,5 +454,101 @@ describe('refreshing a backup', () => {
       'Strain not found',
       "Depends on a change that couldn't be saved (1 backup of S-2A1: S-2A1(3))",
     ]);
+  });
+});
+
+describe("a viewer's phone", () => {
+  it('refuses every change before it is queued, and can still read', async () => {
+    const viewer = localWriter({ db, newId: () => 'v-1', now: () => '2026-11-23T12:00:00.000Z', initials: 'VI', canWrite: false });
+    await expect(viewer.addNote(ACCOUNT, 'id-S-2', 'hi')).rejects.toThrow(VIEWER_REFUSAL);
+    await expect(viewer.createTransfers({ parentId: 'id-S-2', count: 1, medium: 'agar', madeOn: '2026-11-23' })).rejects.toThrow(VIEWER_REFUSAL);
+    await expect(viewer.setItemStatus('id-S-2', 'contaminated')).rejects.toThrow(VIEWER_REFUSAL);
+    await expect(viewer.logCheck({ itemId: 'id-S-2', checkedOn: '2026-11-23', percent: 5, radiusMm: null })).rejects.toThrow(VIEWER_REFUSAL);
+    await expect(viewer.refreshBackup({ backupId: 'id-S-2A1(1)', madeOn: '2026-11-23' })).rejects.toThrow(VIEWER_REFUSAL);
+    expect(await pendingCount(db)).toBe(0);
+    expect((await viewer.readItems(['id-S-2'])).map((i) => i.code)).toEqual(['S-2']);
+  });
+
+  // Guard: every writer method except the reads below must be refused for viewers.
+  // MUTATION_ARGS is typed as exhaustive, so adding a writer method breaks the
+  // typecheck until it's listed here; the runtime key check catches the rest.
+  const READS = ['readItems'] as const;
+  type Mutation = Exclude<keyof LocalWriter, (typeof READS)[number]>;
+  const MUTATION_ARGS: { [K in Mutation]: Parameters<LocalWriter[K]> } = {
+    createTransfers: [{ parentId: 'id-S-2', count: 1, medium: 'agar', madeOn: '2026-11-23' }],
+    createBackups: [{ parentId: 'id-S-2A1', count: 1, medium: 'slant', madeOn: '2026-11-23' }],
+    refreshBackup: [{ backupId: 'id-S-2A1(1)', madeOn: '2026-11-23' }],
+    createOrigin: [{ accountId: ACCOUNT, strainId: STRAIN, prefix: 'W', medium: 'tissue', madeOn: '2026-11-23' }],
+    setItemStatus: ['id-S-2', 'contaminated', 'green', 'trich'],
+    addNote: [ACCOUNT, 'id-S-2', 'hi'],
+    changeNote: ['note-1', 'edited'],
+    logCheck: [{ itemId: 'id-S-2', checkedOn: '2026-11-23', percent: 5, radiusMm: null }],
+    removeCheck: ['check-1'],
+    createStrain: [ACCOUNT, 'Lions Mane', 'Hericium erinaceus'],
+    resolveRelabel: ['relabel-1'],
+  };
+
+  /** Every row of every local table, so a refused call can't have touched anything. */
+  async function snapshot() {
+    const tables = await db.all<{ name: string }>("select name from sqlite_master where type = 'table' order by name");
+    const out: Record<string, unknown[]> = {};
+    for (const { name } of tables) out[name] = await db.all(`select * from "${name}" order by rowid`);
+    return out;
+  }
+
+  /** A note, a check and a relabel, already synced, for changeNote/removeCheck/resolveRelabel to act on. */
+  async function seedTargets() {
+    let id = 0;
+    const setup = localWriter({ db, newId: () => ['note-1', 'check-1'][id++], now: () => '2026-11-23T11:00:00.000Z', initials: 'KL' });
+    await setup.addNote(ACCOUNT, 'id-S-2', 'original');
+    await setup.logCheck({ itemId: 'id-S-2', checkedOn: '2026-11-23', percent: 10, radiusMm: null });
+    await db.run(
+      `insert into relabels (id, account_id, entity, entity_id, old_code, new_code, updated_at)
+       values ('relabel-1', ?, 'item', 'id-S-2', 'S-2', 'S-9', '2026-11-23T11:00:00.000Z')`,
+      [ACCOUNT],
+    );
+    await db.run('delete from outbox');
+    await db.run('update events set local_pending = 0');
+    await db.run('update colonization_checks set local_pending = 0');
+  }
+
+  it('refuses every mutating writer method, including ones added later, without touching the local copy', async () => {
+    await seedTargets();
+    const before = await snapshot();
+    const viewer = localWriter({ db, newId: () => 'v-1', now: () => '2026-11-23T12:00:00.000Z', initials: 'VI', canWrite: false });
+    const full = localWriter({ db, newId: () => 'x', now: () => 'x', initials: 'X' });
+
+    // The viewer's writer has exactly the same methods as a full one (none dropped),
+    // and every one that isn't a read is listed in MUTATION_ARGS.
+    expect(Object.keys(viewer).sort()).toEqual(Object.keys(full).sort());
+    const mutations = Object.keys(viewer).filter((k) => !(READS as readonly string[]).includes(k));
+    expect(mutations.sort()).toEqual(Object.keys(MUTATION_ARGS).sort());
+
+    for (const name of mutations) {
+      const fn = (viewer as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name];
+      const args = (MUTATION_ARGS as Record<string, unknown[]>)[name];
+      await expect(fn(...args)).rejects.toThrow(VIEWER_REFUSAL);
+      // With no arguments too: a refusal that depends on the arguments isn't a guard.
+      await expect(fn()).rejects.toThrow(VIEWER_REFUSAL);
+    }
+
+    expect(await pendingCount(db)).toBe(0);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('the guard arguments are real: a full writer accepts every one of them', async () => {
+    // Otherwise the viewer test could pass on arguments that would fail anyway.
+    await seedTargets();
+    for (const [name, args] of Object.entries(MUTATION_ARGS)) {
+      const fn = (writer as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name];
+      await expect(fn(...args)).resolves.not.toThrow();
+    }
+    expect(await pendingCount(db)).toBe(Object.keys(MUTATION_ARGS).length);
+  });
+
+  it('owners and techs (the default) can still write', async () => {
+    const tech = localWriter({ db, newId: () => 't-1', now: () => '2026-11-23T12:00:00.000Z', initials: 'TE', canWrite: true });
+    await tech.addNote(ACCOUNT, 'id-S-2', 'ok');
+    expect(await pendingCount(db)).toBe(1);
   });
 });
