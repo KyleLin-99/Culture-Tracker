@@ -77,7 +77,12 @@ database tests locally).
 2. **Strains and new origins** → add a strain → add its origin (spore print,
    clone, or a vendor's initials).
 3. Open a culture → **Transfer** → choose how many and onto what. The app shows
-   the codes to write on the new labels.
+   the new codes and can print their labels straight away.
+   **Labels** have a QR code plus strain · date · initials · code. Print on a
+   Brother 29 × 90 mm or 62 mm roll (AirPrint on iPhone; on Android install
+   Brother's *Print Service Plugin*), or on a letter sheet of 30 (Avery 5160).
+   **Scan label** on the home screen opens the culture. The QR holds the
+   culture's id, so it still works after a relabel.
 4. From any culture: make backups, mark it contaminated, retire it, add, edit
    or remove notes, and see its lineage and history. Type a code on the home
    screen to jump to it; **Home** in the header gets you back from anywhere.

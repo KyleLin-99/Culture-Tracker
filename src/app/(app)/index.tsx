@@ -14,7 +14,7 @@ import { PendingWork } from '@/ui/PendingWork';
 import { SyncSummary } from '@/ui/SyncIndicator';
 import { colors, font, space, TAP } from '@/ui/theme';
 
-// Home: type what's on the label to jump to it. Becomes "Scan" once QR labels exist.
+// Home: scan a label, or type its code, to jump to that culture.
 export default function Home() {
   const membership = useMembership();
   const { signOut } = useAuth();
@@ -92,6 +92,7 @@ export default function Home() {
         </View>
       ) : (
         <>
+          <Button title="Scan label" onPress={() => router.push('/scan')} />
           <PendingWork />
           <Button title="Strains and new origins" variant="secondary" onPress={() => router.push('/strains')} />
           <Button title="Batches and runs" variant="secondary" onPress={() => router.push('/batches')} />

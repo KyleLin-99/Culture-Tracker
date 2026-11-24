@@ -27,7 +27,15 @@
     },
     "scheme": "culturetracker",
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Culture Tracker uses the camera to scan the QR codes on your culture labels.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

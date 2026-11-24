@@ -139,7 +139,11 @@ export default function ItemDetail() {
                   <Muted>
                     {i.strains?.name} · {labelDate(newBackups[0].made_on)} · {newBackups[0].initials}
                   </Muted>
-                  <Button title="Done" onPress={() => open(null)} />
+                  <Button
+                    title={newBackups.length === 1 ? 'Print label' : `Print ${newBackups.length} labels`}
+                    onPress={() => router.push({ pathname: '/labels', params: { ids: newBackups.map((b) => b.id).join(',') } })}
+                  />
+                  <Button title="Done" variant="secondary" onPress={() => open(null)} />
                 </>
               ) : (
                 <>
@@ -198,6 +202,11 @@ export default function ItemDetail() {
         <Button title="Mark active again" variant="secondary" busy={busy} onPress={() => run(() => setItemStatus(i.id, 'active'))} />
       )}
 
+      <Button
+        title="Print label"
+        variant="secondary"
+        onPress={() => router.push({ pathname: '/labels', params: { ids: i.id } })}
+      />
       <Button title="Add note" variant="secondary" onPress={() => open('note')} />
       {panel === 'note' && (
         <Card>
