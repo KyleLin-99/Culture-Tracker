@@ -6,6 +6,7 @@
 
 import * as Crypto from 'expo-crypto';
 
+import { type BackupMedium, refreshDays } from '@/domain/backups';
 import { todayLocal } from '@/domain/cultureCode';
 import { currentRecipes } from '@/domain/recipes';
 import type {
@@ -304,6 +305,40 @@ export async function removeCheck(id: string): Promise<void> {
     return;
   }
   unwrap(await supabase.rpc('remove_check', { p_id: id }));
+  await afterWrite();
+}
+
+// --- Backups due ---------------------------------------------------------------
+
+/** Active backups, oldest first, with their strain. */
+export async function activeBackups(): Promise<ItemWithRefs[]> {
+  const local = await localReader();
+  if (local) return local.activeBackups();
+  return unwrap(
+    await supabase
+      .from('items')
+      .select('*, strains(name), media_batches(code, sterilization_runs(code))')
+      .is('deleted_at', null)
+      .eq('kind', 'backup')
+      .eq('status', 'active')
+      .order('made_on')
+      .order('code'),
+  );
+}
+
+/** Days between refreshes for each backup medium, with defaults for any not set. */
+export async function backupRefreshDays(): Promise<Record<BackupMedium, number>> {
+  const local = await localReader();
+  if (local) return refreshDays(await local.backupRefreshSettings());
+  const rows = unwrap<{ backup_refresh_days: Record<string, unknown> }[]>(
+    await supabase.from('lab_settings').select('backup_refresh_days').is('deleted_at', null).limit(1),
+  );
+  return refreshDays(rows[0]?.backup_refresh_days);
+}
+
+/** Saves refresh ages (online, like other lab setup). */
+export async function saveBackupRefreshDays(accountId: string, days: Partial<Record<BackupMedium, number>>): Promise<void> {
+  unwrap(await supabase.rpc('set_backup_refresh', { p_account_id: accountId, p_days: days }));
   await afterWrite();
 }
 

@@ -89,3 +89,10 @@ vigor is compared with its ancestors' growth, and ancestors are often older.
 Checks are small, so this stays cheap. Logging is `apply_check()` and removal is
 `remove_check()`, both idempotent; removing a check that hasn't been sent yet
 drops it from the queue instead.
+
+## Lab settings
+
+`lab_settings` (one row per lab; backup refresh ages so far) is pulled first and
+is read-only on the phone, like batches and runs: changing settings needs a
+connection. "Backups due" is worked out on the phone from its copy of active
+backups and these ages (`src/domain/backups.ts`), so it works offline.

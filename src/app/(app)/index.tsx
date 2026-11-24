@@ -9,6 +9,7 @@ import { lookupCode, recentItems } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Button, ErrorText, Muted, Screen, SectionTitle, styles } from '@/ui/components';
+import { BackupsDue } from '@/ui/BackupsDue';
 import { ItemRow } from '@/ui/ItemRow';
 import { PendingWork } from '@/ui/PendingWork';
 import { SyncSummary } from '@/ui/SyncIndicator';
@@ -94,6 +95,7 @@ export default function Home() {
         <>
           <Button title="Scan label" onPress={() => router.push('/scan')} />
           <PendingWork />
+          <BackupsDue />
           <Button title="Strains and new origins" variant="secondary" onPress={() => router.push('/strains')} />
           <Button title="Batches and runs" variant="secondary" onPress={() => router.push('/batches')} />
           <Button title="Recipes" variant="secondary" onPress={() => router.push('/recipes')} />
@@ -126,6 +128,7 @@ export default function Home() {
           {membership.accounts?.name} · {membership.initials}
         </Text>
         <SyncSummary />
+        <Button title="Lab settings" variant="secondary" onPress={() => router.push('/settings')} />
         <Button title="Sign out" variant="secondary" onPress={signOut} />
       </View>
     </Screen>

@@ -45,6 +45,10 @@ beforeAll(async () => {
     check('ck-parent', 'id-S', '2026-11-20', '2026-11-20T10:00:00Z'),
     check('ck-other', 'id-S-3', '2026-11-19', '2026-11-19T10:00:00Z'),
   );
+  // Backups: S-2A1(1) retired; settings saved with the slant age changed.
+  lab.items.find((i) => i.code === 'S-2A1(1)')!.status = 'used';
+  lab.items.find((i) => i.code === 'S-2A1(2)')!.medium = 'slant';
+  lab.lab_settings.push({ id: 'ls-1', account_id: ACCOUNT, backup_refresh_days: { slant: 365 }, created_at: tick(), updated_at: tick(), deleted_at: null });
   await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: '2025-11-23' });
   q = localQueries(db);
 });
@@ -149,5 +153,18 @@ describe('itemChecks', () => {
   it('merges a culture with its ancestors, and only those asked for', async () => {
     expect((await q.itemChecks(['id-S-2', 'id-S'])).map((c) => c.id)).toEqual(['ck-parent', 'ck-same-1', 'ck-same-2', 'ck-late']);
     expect(await q.itemChecks([])).toEqual([]);
+  });
+});
+
+describe('backups due', () => {
+  it('lists active backups only, with their strain', async () => {
+    const rows = await q.activeBackups();
+    expect(rows.map((r) => [r.code, r.kind, r.status, r.medium, r.strains?.name])).toEqual([
+      ['S-2A1(2)', 'backup', 'active', 'slant', 'Blue Oyster'],
+    ]);
+  });
+
+  it('reads the lab\'s saved refresh ages from its copy', async () => {
+    expect(await q.backupRefreshSettings()).toEqual({ slant: 365 });
   });
 });

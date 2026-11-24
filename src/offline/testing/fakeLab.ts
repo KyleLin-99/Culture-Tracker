@@ -19,7 +19,7 @@ export function tick(): string {
 export type FakeLab = Record<TableName, RemoteRow[]>;
 
 export function emptyLab(): FakeLab {
-  return { strains: [], sterilization_runs: [], recipes: [], media_batches: [], items: [], events: [], colonization_checks: [], relabels: [] };
+  return { lab_settings: [], strains: [], sterilization_runs: [], recipes: [], media_batches: [], items: [], events: [], colonization_checks: [], relabels: [] };
 }
 
 type ItemOpts = { status?: string; madeOn?: string; mediaBatchId?: string | null; strainId?: string };
