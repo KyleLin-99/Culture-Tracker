@@ -133,6 +133,8 @@ export type Lab = {
   statsRows: Record<string, unknown>[];
   /** Memberships: the signed-in user's labs, and other people in their lab. */
   members: Record<string, unknown>[];
+  /** Shared lineage links (token 'tok' + n). */
+  shareLinks: Record<string, unknown>[];
   /** Unused invites. */
   invites: Record<string, unknown>[];
   /** The lab's settings row, once saved. */
@@ -166,6 +168,14 @@ async function mockSupabase(page: Page, lab: Lab) {
       const user = url.searchParams.get('user_id')?.replace(/^eq\./, '');
       const account = url.searchParams.get('account_id')?.replace(/^eq\./, '');
       return json(lab.members.filter((m) => (!user || m.user_id === user) && (!account || m.account_id === account)));
+    }
+    if (path.startsWith('/rest/v1/share_links')) {
+      if (req.method() === 'PATCH') {
+        const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+        lab.shareLinks.filter((l) => l.id === id).forEach((l) => (l.revoked_at = new Date().toISOString()));
+        return json([]);
+      }
+      return json(lab.shareLinks.filter((l) => !l.revoked_at));
     }
     if (path.startsWith('/rest/v1/invites')) {
       if (req.method() === 'PATCH') {
@@ -265,6 +275,24 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
+      if (fn === 'create_share_link') {
+        const row = { id: `sl-${lab.shareLinks.length + 1}`, token: `tok${lab.shareLinks.length + 1}abcdefghjkmnpqrstuvw`, created_at: new Date().toISOString(), expires_at: '2026-12-31T00:00:00Z', revoked_at: null };
+        lab.shareLinks.push(row);
+        return json([row]);
+      }
+      if (fn === 'shared_lineage') {
+        const link = lab.shareLinks.find((l) => l.token === body.p_token && !l.revoked_at);
+        if (!link) return json({ message: 'This link has expired or been turned off. Ask for a new one.', code: 'P0002' }, 400);
+        const byId = new Map(lab.items.map((i) => [i.id, i]));
+        return json({
+          strain: { name: 'Blue Oyster', species: 'Pleurotus ostreatus' },
+          expires_at: link.expires_at,
+          tree: lineage(lab.items, 'o-tbg').map((t) => ({
+            code: t.code, parent_code: t.parent_id ? byId.get(t.parent_id)?.code ?? null : null, kind: t.kind, medium: t.medium,
+            status: t.status, generation: t.generation, made_on: t.made_on, depth: t.depth,
+          })),
+        });
+      }
       if (fn === 'invite_member') {
         const row = { id: `inv-${lab.invites.length + 1}`, role: body.p_role, created_at: new Date().toISOString(), expires_at: '2026-12-31T00:00:00Z', revoked_at: null, accepted_at: null };
         lab.invites.push(row);
@@ -378,7 +406,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), invites: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

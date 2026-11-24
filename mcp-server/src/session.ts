@@ -11,9 +11,16 @@ export type Config = { url: string; anonKey: string };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const url = env.SUPABASE_URL ?? env.EXPO_PUBLIC_SUPABASE_URL;
-  const anonKey = env.SUPABASE_ANON_KEY ?? env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  // The app's .env calls it the publishable key; older projects call it the anon key.
+  const anonKey =
+    env.SUPABASE_ANON_KEY ??
+    env.SUPABASE_PUBLISHABLE_KEY ??
+    env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) {
-    throw new Error('Set SUPABASE_URL and SUPABASE_ANON_KEY (the same values as EXPO_PUBLIC_SUPABASE_* in the app\'s .env).');
+    throw new Error(
+      "Set SUPABASE_URL and SUPABASE_ANON_KEY (the app's EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY).",
+    );
   }
   return { url, anonKey };
 }

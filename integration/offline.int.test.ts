@@ -2,6 +2,7 @@
 // API calls, server functions and row-level security the app meets in the lab.
 // A phone here is a SQLite database (sql.js) plus the app's real offline code.
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { createClient } from '@supabase/supabase-js';
 import type { Client } from 'pg';
 
 import { failedChanges, flush } from '@/offline/outbox';
@@ -297,6 +298,21 @@ suite('offline sync against real Supabase', () => {
     // The code worked once.
     const again = await (await newUser(env as TestEnv, admin)).client.rpc('accept_invite', { p_code: invite.code, p_initials: 'XX' });
     expect(again.error?.message).toMatch(/isn't valid/);
+  });
+
+  it('a shared lineage link works signed out, and shows only the tree', async () => {
+    const [link] = must(await lab.client.rpc('create_share_link', { p_strain_id: lab.strainId })) as { token: string }[];
+    const visitor = createClient(env!.url, env!.anonKey, { auth: { persistSession: false } });
+    const shown = must(await visitor.rpc('shared_lineage', { p_token: link.token })) as { strain: { name: string }; tree: Record<string, unknown>[] };
+    expect(shown.strain.name).toBe('Blue Oyster');
+    expect(shown.tree.map((r) => r.code)).toContain('S-1');
+    expect(Object.keys(shown.tree[0]).sort()).toEqual(['code', 'depth', 'generation', 'kind', 'made_on', 'medium', 'parent_code', 'status']);
+
+    // Signed out, nothing else is readable.
+    expect((await visitor.from('items').select('id')).data ?? []).toEqual([]);
+    expect((await visitor.from('share_links').select('id')).error).toBeTruthy();
+    expect((await visitor.rpc('lookup_code', { p_query: 'S' })).error).toBeTruthy();
+    expect((await visitor.rpc('shared_lineage', { p_token: 'not-a-token' })).error?.message).toMatch(/expired or been turned off/);
   });
 
   it('another lab sees none of this, and its changes into this lab are refused', async () => {

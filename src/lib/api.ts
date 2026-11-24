@@ -104,6 +104,46 @@ export async function removeMember(accountId: string, userId: string): Promise<v
   unwrap(await supabase.rpc('remove_member', { p_account_id: accountId, p_user_id: userId }));
 }
 
+// --- Shared lineage links -------------------------------------------------------
+
+export type ShareLink = { id: string; created_at: string; expires_at: string; revoked_at: string | null };
+
+/** A read-only link to a strain's tree, for 30 days. Returns the token once. */
+export async function createShareLink(strainId: string, days = 30): Promise<{ id: string; token: string; expires_at: string }> {
+  const rows = unwrap<{ id: string; token: string; expires_at: string }[]>(
+    await supabase.rpc('create_share_link', { p_strain_id: strainId, p_days: days }),
+  );
+  return rows[0];
+}
+
+/** The strain's links that still work. */
+export async function listShareLinks(strainId: string): Promise<ShareLink[]> {
+  return unwrap(
+    await supabase
+      .from('share_links')
+      .select('id, created_at, expires_at, revoked_at')
+      .eq('strain_id', strainId)
+      .is('revoked_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false }),
+  );
+}
+
+export async function revokeShareLink(id: string): Promise<void> {
+  unwrap(await supabase.from('share_links').update({ revoked_at: new Date().toISOString() }).eq('id', id));
+}
+
+export type SharedLineage = {
+  strain: { name: string; species: string | null };
+  expires_at: string;
+  tree: { code: string; parent_code: string | null; kind: string; medium: Medium; status: ItemStatus; generation: number; made_on: string; depth: number }[];
+};
+
+/** What a shared link shows; works signed out. */
+export async function sharedLineage(token: string): Promise<SharedLineage> {
+  return unwrap<SharedLineage>(await supabase.rpc('shared_lineage', { p_token: token }));
+}
+
 // --- Strains --------------------------------------------------------------
 
 export async function listStrains(): Promise<Strain[]> {

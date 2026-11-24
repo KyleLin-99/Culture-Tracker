@@ -10,7 +10,16 @@ import { colors, font, space, statusColor } from './theme';
  * A family tree as an indented list. Contaminated branches show in red.
  * `baseDepth` shifts the indent so the shallowest row sits at the left edge.
  */
-export function TreeList({ rows, highlightId }: { rows: TreeRow[]; highlightId?: string }) {
+export function TreeList({
+  rows,
+  highlightId,
+  readOnly = false,
+}: {
+  rows: TreeRow[];
+  highlightId?: string;
+  /** A shared, signed-out view: rows don't open cultures, and initials aren't shown. */
+  readOnly?: boolean;
+}) {
   if (rows.length === 0) return null;
   const base = Math.min(...rows.map((r) => r.depth));
   return (
@@ -22,6 +31,7 @@ export function TreeList({ rows, highlightId }: { rows: TreeRow[]; highlightId?:
           <Pressable
             key={r.id}
             testID={`tree-row-${r.code}`}
+            disabled={readOnly}
             onPress={() => router.push({ pathname: '/items/[id]', params: { id: r.id } })}
             style={({ pressed }) => ({
               minHeight: 52,
@@ -46,7 +56,8 @@ export function TreeList({ rows, highlightId }: { rows: TreeRow[]; highlightId?:
               {r.status !== 'active' ? `  · ${STATUS_LABEL[r.status]}` : ''}
             </Text>
             <Text style={{ fontSize: font.small, color: colors.muted }}>
-              {MEDIUM_LABEL[r.medium]} · {labelDate(r.made_on)} · {r.initials}
+              {MEDIUM_LABEL[r.medium]} · {labelDate(r.made_on)}
+              {readOnly ? '' : ` · ${r.initials}`}
             </Text>
           </Pressable>
         );

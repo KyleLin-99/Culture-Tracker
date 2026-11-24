@@ -21,11 +21,11 @@ npm run build
 ```
 
 Sign in with the same email code as the app. The values are the ones in the app's
-`.env` (`EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`):
+`.env` (`EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`):
 
 ```powershell
 $env:SUPABASE_URL = "https://<your-project-ref>.supabase.co"
-$env:SUPABASE_ANON_KEY = "<anon key>"
+$env:SUPABASE_ANON_KEY = "<publishable key, sb_publishable_...>"
 npm run login
 ```
 
@@ -46,7 +46,7 @@ own path and values):
       "args": ["C:\\Users\\Kyle\\Desktop\\CultureTracker\\Culture-Tracker\\mcp-server\\dist\\index.js"],
       "env": {
         "SUPABASE_URL": "https://<your-project-ref>.supabase.co",
-        "SUPABASE_ANON_KEY": "<anon key>"
+        "SUPABASE_ANON_KEY": "<publishable key, sb_publishable_...>"
       }
     }
   }

@@ -101,7 +101,7 @@ notes, expired or revoked tokens).
 1. Roles + policies (no UI change for a solo lab: Kyle stays owner). **Built.**
 2. Invites + People screen + more than one lab per user + lab switcher. **Built.**
 3. Viewer mode on phones. **Built** (web too).
-4. Shared lineage links.
+4. Shared lineage links. **Built.** Set `EXPO_PUBLIC_WEB_URL` to where the web app is hosted so links are normal https links; until then they open the app.
 
 ## Open questions for Kyle
 

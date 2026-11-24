@@ -10,7 +10,8 @@
 
 Reads use `private.is_member()`, writes `private.can_write()`, lab-wide settings
 `private.is_owner()`. People join by a one-time invite code, can belong to several
-labs, and owners can share a read-only link to one strain's lineage (30 days).
+labs, and owners and techs can share a read-only link to one strain's lineage
+(30 days by default).
 
 **Why.** Growers sharing a lab need their own sign-in and initials on labels, and
 viewers ("friends") shouldn't be able to change records. Enforcing roles in the

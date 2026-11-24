@@ -116,6 +116,10 @@ database tests locally).
    sign-in), belong to several labs, and switch between them under **Labs**.
    Techs record work; viewers see everything and change nothing; only owners
    change lab settings.
+   **Share lineage** on a strain makes a read-only link to its family tree
+   (codes, media, dates, status; no notes or initials) that works signed out for
+   30 days and can be turned off. Set `EXPO_PUBLIC_WEB_URL` in `.env` to where the
+   web app is hosted so the link is a normal web address.
 12. **Offline on your phone**: the app keeps a copy of your lab (a year of
    history plus everything active) and syncs it in the background. Lookups,
    lineage, transfers, backups, status changes and notes all work with no

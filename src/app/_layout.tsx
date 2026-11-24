@@ -35,6 +35,8 @@ function RootStack() {
         contentStyle: { backgroundColor: colors.bg },
       }}
     >
+      {/* Shared lineage links open for anyone, signed in or not. */}
+      <Stack.Screen name="shared/[token]" options={{ title: 'Shared lineage' }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" options={{ title: 'Sign in', headerShown: false }} />
       </Stack.Protected>
