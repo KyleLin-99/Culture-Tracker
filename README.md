@@ -104,7 +104,10 @@ database tests locally).
 9. **Contamination trace**: ranks what contaminated cultures share that clean
    ones don't (parent, media batch, sterilization run, recipe, day made), with
    relative risk and a Fisher's exact p value.
-10. **Offline on your phone**: the app keeps a copy of your lab (a year of
+10. **Stats**: contamination rates over the last 30 days, 90 days or year,
+   grouped by recipe, sterilization run, media batch, generation, month or
+   strain, and average growth per strain from your growth checks.
+11. **Offline on your phone**: the app keeps a copy of your lab (a year of
    history plus everything active) and syncs it in the background. Lookups,
    lineage, transfers, backups, status changes and notes all work with no
    signal and sync when you're back online. If another device used a code

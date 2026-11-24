@@ -119,6 +119,8 @@ export type Lab = {
   items: Row[];
   runs: Record<string, unknown>[];
   batches: Record<string, unknown>[];
+  /** What stats_rows() returns (filtered by its dates). */
+  statsRows: Record<string, unknown>[];
   /** The lab's settings row, once saved. */
   settings: { backup_refresh_days: Record<string, number> } | null;
   /** Growth check-ins. */
@@ -233,6 +235,9 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
+      if (fn === 'stats_rows') {
+        return json(lab.statsRows.filter((r) => (r.made_on as string) >= String(body.p_from) && (r.made_on as string) <= String(body.p_to)));
+      }
       if (fn === 'set_backup_refresh') {
         lab.settings = { backup_refresh_days: { ...lab.settings?.backup_refresh_days, ...(body.p_days as Record<string, number>) } };
         return json({ id: 'settings-1', account_id: ACCOUNT_ID, ...lab.settings });
@@ -305,7 +310,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);
