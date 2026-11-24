@@ -10,6 +10,7 @@ import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Button, Card, Choices, ErrorText, Field, LinkText, Muted, Screen, SectionTitle, StatusPill, Stepper, styles } from '@/ui/components';
 import { GrowthSection } from '@/ui/GrowthSection';
+import { RefreshSection } from '@/ui/RefreshSection';
 import { colors, font, space } from '@/ui/theme';
 import { TreeList } from '@/ui/TreeList';
 
@@ -115,6 +116,12 @@ export default function ItemDetail() {
           </Text>
         </View>
       )}
+
+      <RefreshSection
+        item={i}
+        parent={lineage.data?.find((r) => r.depth === -1) ?? null}
+        onChanged={() => void Promise.all([item.reload(), lineage.reload(), events.reload()])}
+      />
 
       <ErrorText>{error}</ErrorText>
 

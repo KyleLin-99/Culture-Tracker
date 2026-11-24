@@ -21,6 +21,14 @@ import type { StatsRow } from '@/domain/stats';
 
 import type { SqlDb } from './sql';
 
+/** An active backup and the newest culture refreshing it. */
+export type BackupWithRefresh = ItemWithRefs & { refreshed_by: { id: string; code: string; status: string } | null };
+
+export type RefreshInfo = {
+  refreshOf: { id: string; code: string } | null;
+  refreshedBy: { id: string; code: string; status: string; checks: number } | null;
+};
+
 type ItemRow = Omit<Item, 'aliases'> & {
   aliases?: string;
   media_batch_id: string | null;
@@ -158,11 +166,31 @@ export function localQueries(db: SqlDb) {
     },
 
     /** Active backups, oldest first, with their strain (for "Backups due"). */
-    async activeBackups(): Promise<ItemWithRefs[]> {
+    async activeBackups(): Promise<BackupWithRefresh[]> {
       const rows = await db.all<ItemRow>(
         `${ITEM_SELECT} where i.deleted_at is null and i.kind = 'backup' and i.status = 'active' order by i.made_on, i.code`,
       );
-      return rows.map(toItem);
+      const refreshes = await db.all<{ id: string; code: string; status: string; refresh_of: string }>(
+        `select id, code, status, refresh_of from items where refresh_of is not null and deleted_at is null order by created_at`,
+      );
+      const latest = new Map(refreshes.map((r) => [r.refresh_of, { id: r.id, code: r.code, status: r.status }]));
+      return rows.map(toItem).map((b) => ({ ...b, refreshed_by: latest.get(b.id) ?? null }));
+    },
+
+    /** What this culture refreshes, and what refreshed it (with its growth check count). */
+    async refreshInfo(itemId: string): Promise<RefreshInfo> {
+      const item = await db.first<{ refresh_of: string | null }>('select refresh_of from items where id = ?', [itemId]);
+      const of = item?.refresh_of
+        ? await db.first<{ id: string; code: string }>('select id, code from items where id = ?', [item.refresh_of])
+        : null;
+      const by = await db.first<{ id: string; code: string; status: string }>(
+        'select id, code, status from items where refresh_of = ? and deleted_at is null order by created_at desc limit 1',
+        [itemId],
+      );
+      const checks = by
+        ? ((await db.first<{ n: number }>('select count(*) as n from colonization_checks where item_id = ? and deleted_at is null', [by.id]))?.n ?? 0)
+        : 0;
+      return { refreshOf: of ?? null, refreshedBy: by ? { ...by, checks } : null };
     },
 
     /** The lab's saved backup refresh ages (empty when never changed). */

@@ -96,3 +96,10 @@ drops it from the queue instead.
 is read-only on the phone, like batches and runs: changing settings needs a
 connection. "Backups due" is worked out on the phone from its copy of active
 backups and these ages (`src/domain/backups.ts`), so it works offline.
+
+## Backup refresh
+
+A refresh is planned on the phone like a transfer or backup (`writer.refreshBackup`),
+choosing from the parent if it's active in the phone's copy, else from the backup,
+and sent through `apply_items` with `refresh_of` set. The server checks the link
+(`items_check_refresh`): a sibling backup or a culture grown from the old backup.

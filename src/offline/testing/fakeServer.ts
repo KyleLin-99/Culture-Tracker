@@ -21,6 +21,14 @@ export function fakeServer(lab: FakeLab) {
   function insertItem(p: Record<string, unknown>, preferred: boolean): RemoteRow {
     const parent = p.parent_id ? items().find((i) => i.id === p.parent_id) : null;
     if (p.parent_id && !parent) throw new Error('Parent item not found');
+    // items_check_refresh (supabase/migrations/*_backup_refresh.sql).
+    if (p.refresh_of) {
+      const old = items().find((i) => i.id === p.refresh_of);
+      if (!old || old.kind !== 'backup') throw new Error('Only a backup can be refreshed');
+      if (!((p.kind === 'backup' && p.parent_id === old.parent_id) || p.parent_id === old.id)) {
+        throw new Error('A refresh is a new backup from the same parent, or grown from the old backup');
+      }
+    }
     let code: string;
     const row: RemoteRow = { ...(p as RemoteRow) };
     if (p.kind === 'origin') {

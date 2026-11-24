@@ -36,7 +36,31 @@ export function addDays(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export type BackupLike = { id: string; code: string; medium: Medium; made_on: string };
+export type BackupLike = {
+  id: string;
+  code: string;
+  medium: Medium;
+  made_on: string;
+  /** The newest culture refreshing this backup, if any. */
+  refreshed_by?: { id: string; code: string; status: string } | null;
+};
+
+/** A refresh still standing in for the backup: not contaminated or thrown out. */
+export const refreshAlive = (r: { status: string } | null | undefined) =>
+  !!r && r.status !== 'contaminated' && r.status !== 'discarded';
+
+export type RefreshPlan = { mode: 'from_parent' | 'from_backup'; explain: string };
+
+/**
+ * How a backup gets refreshed (same rule as refresh_backup() on the server): a new
+ * backup from the parent while it's active keeps the generation; otherwise grow
+ * a culture from the backup itself.
+ */
+export function refreshPlan(backup: { code: string }, parent: { code: string; status: string } | null): RefreshPlan {
+  return parent?.status === 'active'
+    ? { mode: 'from_parent', explain: `Makes a new backup from ${parent.code}, which is still active (same generation).` }
+    : { mode: 'from_backup', explain: `${parent ? `${parent.code} is no longer active, so this` : 'This'} grows a new culture from ${backup.code}.` };
+}
 
 export type DueBackup<T extends BackupLike> = {
   backup: T;
@@ -54,6 +78,7 @@ export function backupsDue<T extends BackupLike>(
   today: string,
 ): DueBackup<T>[] {
   return backups
+    .filter((b) => !refreshAlive(b.refreshed_by))
     .map((b) => {
       const dueOn = addDays(b.made_on, days[mediumKey(b.medium)]);
       const overdueDays = daysBetween(dueOn, today);

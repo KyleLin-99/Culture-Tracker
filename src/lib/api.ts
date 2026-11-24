@@ -38,7 +38,7 @@ import {
   syncNow,
 } from '@/offline/engine';
 import type { FailedChange } from '@/offline/outbox';
-import type { Relabel } from '@/offline/queries';
+import type { BackupWithRefresh, RefreshInfo, Relabel } from '@/offline/queries';
 
 import { supabase } from './supabase';
 
@@ -328,10 +328,10 @@ export async function removeCheck(id: string): Promise<void> {
 // --- Backups due ---------------------------------------------------------------
 
 /** Active backups, oldest first, with their strain. */
-export async function activeBackups(): Promise<ItemWithRefs[]> {
+export async function activeBackups(): Promise<BackupWithRefresh[]> {
   const local = await localReader();
   if (local) return local.activeBackups();
-  return unwrap(
+  const backups = unwrap<ItemWithRefs[]>(
     await supabase
       .from('items')
       .select('*, strains(name), media_batches(code, sterilization_runs(code))')
@@ -341,6 +341,55 @@ export async function activeBackups(): Promise<ItemWithRefs[]> {
       .order('made_on')
       .order('code'),
   );
+  const refreshes: { id: string; code: string; status: string; refresh_of: string }[] = [];
+  for (let i = 0; i < backups.length; i += 100) {
+    refreshes.push(
+      ...unwrap<typeof refreshes>(
+        await supabase
+          .from('items')
+          .select('id, code, status, refresh_of')
+          .in('refresh_of', backups.slice(i, i + 100).map((b) => b.id))
+          .is('deleted_at', null)
+          .order('created_at'),
+      ),
+    );
+  }
+  const latest = new Map(refreshes.map((r) => [r.refresh_of, { id: r.id, code: r.code, status: r.status }]));
+  return backups.map((b) => ({ ...b, refreshed_by: latest.get(b.id) ?? null }));
+}
+
+/** What this culture refreshes, and what refreshed it. */
+export async function refreshInfo(itemId: string): Promise<RefreshInfo> {
+  const local = await localReader();
+  if (local) return local.refreshInfo(itemId);
+  const item = unwrap<{ refresh_of: string | null }>(await supabase.from('items').select('refresh_of').eq('id', itemId).single());
+  const of = item.refresh_of
+    ? unwrap<{ id: string; code: string }>(await supabase.from('items').select('id, code').eq('id', item.refresh_of).single())
+    : null;
+  const by = unwrap<{ id: string; code: string; status: string }[]>(
+    await supabase
+      .from('items')
+      .select('id, code, status')
+      .eq('refresh_of', itemId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1),
+  )[0];
+  const checks = by ? (await itemChecks([by.id])).length : 0;
+  return { refreshOf: of, refreshedBy: by ? { ...by, checks } : null };
+}
+
+/** Refreshes a backup (see refreshPlan()); returns the new culture. */
+export async function refreshBackup(backupId: string, madeOn = todayLocal()): Promise<Item> {
+  const w = await localWriter();
+  if (w) {
+    const { ids } = await w.refreshBackup({ backupId, madeOn });
+    await syncNow();
+    return (await w.readItems(ids))[0];
+  }
+  const out = unwrap<Item>(await supabase.rpc('refresh_backup', { p_backup_id: backupId, p_made_on: madeOn }));
+  await afterWrite();
+  return out;
 }
 
 /** Days between refreshes for each backup medium, with defaults for any not set. */

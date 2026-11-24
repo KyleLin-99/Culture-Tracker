@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { addDays, backupsDue, DEFAULT_REFRESH_DAYS, dueText, refreshDays } from '../backups';
+import { addDays, backupsDue, DEFAULT_REFRESH_DAYS, dueText, refreshAlive, refreshDays, refreshPlan } from '../backups';
 
 const b = (code: string, medium: 'slant' | 'lc' | 'agar' | 'tissue', made_on: string) => ({ id: code, code, medium, made_on });
 
@@ -60,5 +60,29 @@ describe('backups due', () => {
     expect([dueText(0), dueText(1), dueText(3), dueText(-1), dueText(-5)]).toEqual([
       'due today', '1 day overdue', '3 days overdue', 'due in 1 day', 'due in 5 days',
     ]);
+  });
+});
+
+describe('refreshing backups', () => {
+  const days = { slant: 180, lc: 120, agar: 60, other: 90 };
+  const old = { id: 'b', code: 'S-2(1)', medium: 'slant' as const, made_on: '2026-01-01' };
+
+  it('refreshes from the parent while it is active, else from the backup', () => {
+    expect(refreshPlan(old, { code: 'S-2', status: 'active' })).toEqual({
+      mode: 'from_parent',
+      explain: 'Makes a new backup from S-2, which is still active (same generation).',
+    });
+    expect(refreshPlan(old, { code: 'S-2', status: 'used' })).toEqual({
+      mode: 'from_backup',
+      explain: 'S-2 is no longer active, so this grows a new culture from S-2(1).',
+    });
+    expect(refreshPlan(old, null).mode).toBe('from_backup');
+  });
+
+  it('stops listing a backup while its refresh is alive, and lists it again if the refresh fails', () => {
+    const due = (status: string | null) =>
+      backupsDue([{ ...old, refreshed_by: status ? { id: 'n', code: 'S-2(2)', status } : null }], days, '2026-11-24').length;
+    expect([due(null), due('active'), due('used'), due('contaminated'), due('discarded')]).toEqual([1, 0, 0, 1, 1]);
+    expect([refreshAlive(null), refreshAlive({ status: 'archived' })]).toEqual([false, true]);
   });
 });

@@ -3,9 +3,27 @@ import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { localQueries } from '../queries';
 import { getMeta, migrate, SCHEMA_VERSION, setMeta } from '../schema';
 import type { SqlDb } from '../sql';
-import { OVERLAP_MS, pull, upsertRows } from '../sync';
+import { OVERLAP_MS, pull } from '../sync';
 import { ACCOUNT, builder, emptyLab, fakeRemote, standardLab, STRAIN, tick } from '../testing/fakeLab';
 import { openTestDb } from '../testing/sqljsDb';
+
+/**
+ * Writes rows the way an older version of the app would have: only the columns
+ * that phone's schema has (newer columns didn't exist yet).
+ */
+async function insertAsOldPhone(db: SqlDb, table: string, rows: Record<string, unknown>[]) {
+  const cols = (await db.all<{ name: string }>(`pragma table_info(${table})`)).map((c) => c.name).filter((c) => c !== 'local_pending');
+  for (const row of rows) {
+    const present = cols.filter((c) => c in row);
+    await db.run(
+      `insert into ${table} (${present.join(', ')}) values (${present.map(() => '?').join(', ')})`,
+      present.map((c) => {
+        const v = row[c];
+        return v === undefined || v === null ? null : typeof v === 'object' ? JSON.stringify(v) : (v as string | number);
+      }),
+    );
+  }
+}
 
 const HISTORY_FROM = '2025-11-23';
 let db: SqlDb & { close(): void };
@@ -142,7 +160,7 @@ describe('schema', () => {
     // A phone on the version before recipes, with a synced copy.
     await migrate(old, 2);
     const lab = standardLab();
-    await upsertRows(old, 'items', lab.items.slice(0, 3));
+    await insertAsOldPhone(old, 'items', lab.items.slice(0, 3));
     await setMeta(old, 'account_id', ACCOUNT);
     await setMeta(old, 'first_pull_done', '1');
 
@@ -161,7 +179,7 @@ describe('schema', () => {
     // A phone on the version before colonization checks, with a synced copy and a queued change.
     await migrate(old, 3);
     const lab = standardLab();
-    await upsertRows(old, 'items', lab.items.slice(0, 3));
+    await insertAsOldPhone(old, 'items', lab.items.slice(0, 3));
     await setMeta(old, 'account_id', ACCOUNT);
     await setMeta(old, 'first_pull_done', '1');
     await old.run("insert into outbox (op, payload, created_at) values ('status', '{}', '2026-11-23T12:00:00Z')");
@@ -183,9 +201,9 @@ describe('schema', () => {
 
   it('upgrades a phone from the version before lab settings: keeps its copy, then pulls the settings', async () => {
     const old = await openTestDb();
-    await migrate(old, SCHEMA_VERSION - 1);
+    await migrate(old, 4); // was SCHEMA_VERSION - 1, which stopped meaning "before lab settings" at version 6
     const lab = standardLab();
-    await upsertRows(old, 'items', lab.items.slice(0, 3));
+    await insertAsOldPhone(old, 'items', lab.items.slice(0, 3));
     await setMeta(old, 'account_id', ACCOUNT);
     await setMeta(old, 'first_pull_done', '1');
     await old.run("insert into outbox (op, payload, created_at) values ('status', '{}', '2026-11-23T12:00:00Z')");
@@ -202,6 +220,52 @@ describe('schema', () => {
     await pull(old, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
     expect((await old.first<{ n: number }>('select count(*) as n from items'))!.n).toBe(lab.items.length);
     expect(await localQueries(old).backupRefreshSettings()).toEqual({ lc: 90 });
+    old.close();
+  });
+
+  it('upgrades a phone on version 5: keeps its copy and pending changes, and later refreshes keep their link', async () => {
+    const old = await openTestDb();
+    await migrate(old, 5);
+    const lab = standardLab();
+    await insertAsOldPhone(old, 'items', lab.items.slice(0, 3));
+    await setMeta(old, 'account_id', ACCOUNT);
+    await setMeta(old, 'first_pull_done', '1');
+    await old.run("insert into outbox (op, payload, created_at) values ('status', '{}', '2026-11-23T12:00:00Z')");
+
+    await migrate(old);
+    expect((await old.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(SCHEMA_VERSION);
+    expect((await old.first<{ n: number }>('select count(*) as n from outbox'))!.n).toBe(1);
+    expect((await old.all<{ refresh_of: string | null }>('select refresh_of from items')).map((r) => r.refresh_of)).toEqual([null, null, null]);
+
+    Object.assign(builder(lab).backup('S-2A1'), { refresh_of: 'id-S-2A1(1)', updated_at: tick() }); // S-2A1(3)
+    await pull(old, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect((await localQueries(old).refreshInfo('id-S-2A1(1)')).refreshedBy).toMatchObject({ code: 'S-2A1(3)' });
+    expect((await localQueries(old).activeBackups()).find((b) => b.code === 'S-2A1(1)')?.refreshed_by).toMatchObject({ code: 'S-2A1(3)' });
+    old.close();
+  });
+
+  // The server's refresh_of (and the web's Refresh button) can go live before a
+  // phone updates the app. Such a phone pulls the web's refreshes without the
+  // column it doesn't have yet; once it upgrades, it must pull them again or
+  // those backups stay "due" on the phone for good.
+  it('restores refresh links an older phone pulled before it knew about them', async () => {
+    const old = await openTestDb();
+    await migrate(old, 5);
+    const lab = standardLab();
+    Object.assign(builder(lab).backup('S-2A1'), { refresh_of: 'id-S-2A1(1)', updated_at: tick() }); // made on the web
+    await insertAsOldPhone(old, 'items', lab.items); // the old app's pull: no refresh_of column
+    // ...and kept syncing for a while after, so the refresh is older than the pull overlap.
+    const newest = lab.items.map((i) => i.updated_at as string).sort().at(-1)!;
+    await setMeta(old, 'pulled_until_items', new Date(Date.parse(newest) + OVERLAP_MS + 60_000).toISOString());
+    await setMeta(old, 'account_id', ACCOUNT);
+    await setMeta(old, 'first_pull_done', '1');
+
+    await migrate(old);
+    await pull(old, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect((await old.first<{ refresh_of: string | null }>("select refresh_of from items where id = 'id-S-2A1(3)'"))?.refresh_of).toBe(
+      'id-S-2A1(1)',
+    );
+    expect((await localQueries(old).activeBackups()).find((b) => b.code === 'S-2A1(1)')?.refreshed_by).toMatchObject({ code: 'S-2A1(3)' });
     old.close();
   });
 });

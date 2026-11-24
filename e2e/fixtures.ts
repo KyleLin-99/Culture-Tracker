@@ -160,6 +160,12 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (single && id) return json(lab.items.find((i) => i.id === id) ?? {}, lab.items.some((i) => i.id === id) ? 200 : 406);
       const kind = url.searchParams.get('kind')?.replace(/^eq\./, '');
       const status = url.searchParams.get('status')?.replace(/^eq\./, '');
+      // refresh_of=eq.<id> or refresh_of=in.(<ids>): cultures refreshing those backups, newest first.
+      const ref = url.searchParams.get('refresh_of');
+      if (ref) {
+        const ids = ref.replace(/^(eq\.|in\.\()/, '').replace(/\)$/, '').split(',');
+        return json([...lab.items].reverse().filter((i) => ids.includes(i.refresh_of as string)));
+      }
       return json([...lab.items].reverse().filter((i) => (!kind || i.kind === kind) && (!status || i.status === status)));
     }
     if (path.startsWith('/rest/v1/lab_settings')) {
@@ -285,6 +291,19 @@ async function mockSupabase(page: Page, lab: Lab) {
             .filter((i) => i.code.startsWith(q))
             .map((i) => ({ ...i, strain_name: 'Blue Oyster', exact: i.code === q })),
         );
+      }
+      if (fn === 'refresh_backup') {
+        // Same choice as refresh_backup(): from the parent while it's active, else from the backup.
+        const old = lab.items.find((i) => i.id === body.p_backup_id)!;
+        const parent = lab.items.find((i) => i.id === old.parent_id);
+        const fromParent = parent?.status === 'active';
+        const base = fromParent ? parent! : old;
+        const backup = fromParent;
+        const k = lab.items.filter((i) => i.parent_id === base.id && (i.kind === 'backup') === backup).length + 1;
+        const code = backup ? `${base.code}(${k})` : `${base.code}-${k}`;
+        const made = { ...item(`${base.id}-r${k}`, code, backup ? 'backup' : 'transfer', String(old.medium), Number(base.generation), base.id), refresh_of: old.id };
+        lab.items.push(made);
+        return json(made);
       }
       if (fn === 'create_transfers' || fn === 'create_backups') {
         const parent = lab.items.find((i) => i.id === body.p_parent_id)!;

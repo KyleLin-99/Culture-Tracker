@@ -10,7 +10,7 @@ import type { SqlDb } from './sql';
 const ITEM_COLS = [
   'id', 'account_id', 'strain_id', 'parent_id', 'kind', 'medium', 'origin_prefix', 'origin_number', 'position',
   'backup_number', 'code', 'generation', 'status', 'location', 'media_batch_id', 'made_on', 'initials', 'notes',
-  'aliases', 'created_at', 'updated_at', 'local_pending',
+  'aliases', 'refresh_of', 'created_at', 'updated_at', 'local_pending',
 ] as const;
 
 export type WriterDeps = {
@@ -30,7 +30,7 @@ async function insertPlanned(deps: WriterDeps, items: PlannedItem[]): Promise<vo
       medium: p.medium, origin_prefix: p.origin_prefix, origin_number: p.origin_number, position: p.position,
       backup_number: p.backup_number, code: p.expected_code, generation: p.generation, status: 'active',
       location: p.location, media_batch_id: p.media_batch_id, made_on: p.made_on, initials: deps.initials,
-      notes: p.notes, aliases: '[]', created_at: at, updated_at: at, local_pending: 1,
+      notes: p.notes, aliases: '[]', refresh_of: p.refresh_of ?? null, created_at: at, updated_at: at, local_pending: 1,
     };
     await deps.db.run(
       `insert into items (${ITEM_COLS.join(', ')}) values (${ITEM_COLS.map(() => '?').join(', ')})`,
@@ -92,6 +92,30 @@ export function localWriter(deps: WriterDeps) {
       const parent = await db.first<{ code: string }>('select code from items where id = ?', [args.parentId]);
       const note = `${args.count} × ${args.medium} backup: ${span(items)}`;
       return itemsWithEvent(items, 'backed_up', note, `${args.count} backup${args.count === 1 ? '' : 's'} of ${parent?.code}: ${span(items)}`);
+    },
+
+    /**
+     * Replaces a due backup: a new backup from its parent while the parent is active,
+     * else a culture grown from the backup. Same choice as refresh_backup() on the server.
+     */
+    async refreshBackup(args: { backupId: string; madeOn: string }) {
+      const b = await db.first<{ id: string; kind: string; medium: Medium; code: string; parent_id: string | null }>(
+        'select id, kind, medium, code, parent_id from items where id = ? and deleted_at is null',
+        [args.backupId],
+      );
+      if (!b) throw new Error('Culture not found');
+      if (b.kind !== 'backup') throw new Error('Only a backup can be refreshed');
+      const parent = b.parent_id
+        ? await db.first<{ status: string }>('select status from items where id = ? and deleted_at is null', [b.parent_id])
+        : null;
+      const fromParent = parent?.status === 'active';
+      const planned = fromParent
+        ? await planBackups(db, deps.newId, { parentId: b.parent_id!, count: 1, medium: b.medium, madeOn: args.madeOn })
+        : await planTransfers(db, deps.newId, { parentId: b.id, count: 1, medium: b.medium, madeOn: args.madeOn });
+      const items = planned.map((p) => ({ ...p, refresh_of: b.id }));
+      const code = items[0].expected_code;
+      const note = fromParent ? `1 × ${b.medium} backup: ${code} (refresh of ${b.code})` : `1 × ${b.medium}: ${code} (refresh)`;
+      return itemsWithEvent(items, fromParent ? 'backed_up' : 'transferred', note, `Refresh of ${b.code}: ${code}`);
     },
 
     async createOrigin(args: { accountId: string; strainId: string; prefix: string; medium: Medium; madeOn: string; notes?: string }) {

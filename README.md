@@ -93,8 +93,11 @@ database tests locally).
    possibly losing vigor (senescence), so you can go back to an earlier backup.
 6. **Backups due**: the home screen lists active backups past their refresh
    age, starting 14 days early (defaults: slants 180 days, LC 120, agar 60,
-   other 180; change them in **Lab settings**). Make a fresh backup, then
-   retire the old one.
+   other 180; change them in **Lab settings**). **Refresh backup** on a backup
+   makes its replacement: a new backup from the parent while the parent is still
+   active (same generation), otherwise a culture grown from the backup itself.
+   The old backup stays until the new one has a growth check; then **Retire this
+   backup**. If the refresh contaminates, the old backup shows as due again.
 7. **Recipes**: save your agar and LC recipes once (ingredients for a batch
    size, steps). They scale to any volume. Editing saves a new version, so old
    batches keep the version they were made from.

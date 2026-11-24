@@ -173,7 +173,10 @@ function createdIds(op: OutboxOp): string[] {
 function dependsOn(op: OutboxOp, ids: Set<string>): boolean {
   switch (op.op) {
     case 'items':
-      return op.items.some((i) => (i.parent_id && ids.has(i.parent_id)) || ids.has(i.strain_id));
+      // refresh_of: a refresh from the parent depends on the backup it replaces too.
+      return op.items.some(
+        (i) => (i.parent_id && ids.has(i.parent_id)) || ids.has(i.strain_id) || (i.refresh_of && ids.has(i.refresh_of)),
+      );
     case 'status':
       return ids.has(op.item_id);
     case 'event':

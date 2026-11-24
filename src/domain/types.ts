@@ -52,6 +52,8 @@ export type Item = {
   initials: string;
   notes: string | null;
   created_at: string;
+  /** The backup this culture refreshes, if any. */
+  refresh_of?: string | null;
 };
 
 /** An item with the names of what it points at, for the culture screen. */
