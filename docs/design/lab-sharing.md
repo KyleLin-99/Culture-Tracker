@@ -99,7 +99,7 @@ notes, expired or revoked tokens).
 ## PRs, in order
 
 1. Roles + policies (no UI change for a solo lab: Kyle stays owner). **Built.**
-2. Invites + People screen + more than one lab per user + lab switcher.
+2. Invites + People screen + more than one lab per user + lab switcher. **Built.**
 3. Viewer mode on phones.
 4. Shared lineage links.
 

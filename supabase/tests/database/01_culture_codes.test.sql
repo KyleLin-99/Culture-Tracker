@@ -32,8 +32,8 @@ select tests.sign_in('00000000-0000-0000-0000-00000000000a');
 
 select isnt(public.create_account('Kyle''s Lab', 'kl'), null, 'create_account returns the new account id');
 select is((select initials from public.members), 'KL', 'initials are stored upper-case');
-select throws_ok($$ select public.create_account('Second lab', 'KL') $$,
-  'P0001', 'You already belong to a lab account', 'a user gets only one account for now');
+-- (Belonging to several labs is covered in 12_invites.test.sql.)
+select is((select role from public.members), 'owner', 'the creator owns the new lab');
 
 insert into public.strains (id, account_id, name, species)
 select '10000000-0000-0000-0000-000000000001', account_id, 'Blue Oyster', 'Pleurotus ostreatus' from public.members;

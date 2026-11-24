@@ -1,17 +1,31 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import type { Membership } from '@/domain/types';
 import { supabase } from '@/lib/supabase';
-import { clearLocalCopy } from '@/offline/engine';
+import { clearLocalCopy, unsentChangeCount } from '@/offline/engine';
+
+import { checkLabSwitch, pickCurrentLab, sortByLabName } from './currentLab';
+
+/** Remembers which lab you were working in (a convenience; fine if storage is unavailable). */
+const CURRENT_LAB = 'current-lab';
 
 type AuthState = {
   /** True until the stored session and membership have been checked. */
   loading: boolean;
   session: Session | null;
-  /** The lab account the user belongs to; null until onboarding is done. */
+  /** The lab you're working in; null until you create or join one. */
   membership: Membership | null;
-  reloadMembership: () => Promise<void>;
+  /** Every lab you belong to, by name. */
+  memberships: Membership[];
+  /** Reloads your labs; pass an id to switch to that lab (e.g. one just joined). */
+  reloadMembership: (selectId?: string) => Promise<void>;
+  /**
+   * Works in another lab. On a phone this replaces its local copy, so it refuses
+   * while changes are still waiting to be sent.
+   */
+  switchLab: (accountId: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -19,22 +33,28 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [membership, setMembership] = useState<Membership | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [currentId, setCurrentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const userIdRef = useRef<string | null | undefined>(undefined);
 
-  const loadMembership = useCallback(async (s: Session | null) => {
+  const loadMembership = useCallback(async (s: Session | null, selectId?: string) => {
     if (!s) {
-      setMembership(null);
+      setMemberships([]);
+      setCurrentId(null);
       return;
     }
     const { data, error } = await supabase
       .from('members')
       .select('account_id, user_id, role, initials, accounts(name)')
-      .eq('user_id', s.user.id)
-      .maybeSingle();
-    if (error) console.warn('Could not load membership', error.message);
-    setMembership((data as Membership | null) ?? null);
+      .eq('user_id', s.user.id);
+    if (error) console.warn('Could not load memberships', error.message);
+    const list = sortByLabName((data as Membership[] | null) ?? []);
+    const saved = selectId ?? (await AsyncStorage.getItem(CURRENT_LAB).catch(() => null));
+    const pick = pickCurrentLab(list, saved);
+    setMemberships(list);
+    setCurrentId(pick?.account_id ?? null);
+    if (pick) await AsyncStorage.setItem(CURRENT_LAB, pick.account_id).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -69,11 +89,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [loadMembership]);
 
+  const membership = memberships.find((m) => m.account_id === currentId) ?? null;
+
   const value: AuthState = {
     loading,
     session,
     membership,
-    reloadMembership: () => loadMembership(session),
+    memberships,
+    reloadMembership: (selectId?: string) => loadMembership(session, selectId),
+    switchLab: async (accountId: string) => {
+      if (!(await checkLabSwitch(accountId, currentId, unsentChangeCount))) return;
+      setCurrentId(accountId);
+      await AsyncStorage.setItem(CURRENT_LAB, accountId).catch(() => {});
+    },
     signOut: async () => {
       await supabase.auth.signOut();
       await clearLocalCopy(); // the lab's records don't stay on a signed-out phone

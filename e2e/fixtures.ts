@@ -3,7 +3,7 @@
 // the app sent.
 import { test as base, type Page, type Route } from '@playwright/test';
 
-const USER_ID = '00000000-0000-4000-8000-00000000000a';
+export const USER_ID = '00000000-0000-4000-8000-00000000000a';
 export const ACCOUNT_ID = '00000000-0000-4000-8000-0000000000ac';
 export const STRAIN_ID = '00000000-0000-4000-8000-000000000051';
 const MADE_ON = '2026-11-23';
@@ -100,6 +100,16 @@ export function seedRecipes(): Record<string, unknown>[] {
   ];
 }
 
+export const OTHER_LAB_ID = '00000000-0000-4000-8000-0000000000bb';
+
+/** Kyle owns his lab; a tech (JD) works in it too. */
+export function seedMembers(): Record<string, unknown>[] {
+  return [
+    { account_id: ACCOUNT_ID, user_id: USER_ID, role: 'owner', initials: 'KL', accounts: { name: "Kyle's Lab" }, created_at: '2026-11-01T00:00:00Z' },
+    { account_id: ACCOUNT_ID, user_id: '00000000-0000-4000-8000-0000000000b2', role: 'tech', initials: 'JD', accounts: { name: "Kyle's Lab" }, created_at: '2026-11-02T00:00:00Z' },
+  ];
+}
+
 /** TBG-2's history: a transfer (fixed) and a note (editable). */
 export function seedEvents(): Record<string, unknown>[] {
   return [
@@ -121,6 +131,10 @@ export type Lab = {
   batches: Record<string, unknown>[];
   /** What stats_rows() returns (filtered by its dates). */
   statsRows: Record<string, unknown>[];
+  /** Memberships: the signed-in user's labs, and other people in their lab. */
+  members: Record<string, unknown>[];
+  /** Unused invites. */
+  invites: Record<string, unknown>[];
   /** The lab's settings row, once saved. */
   settings: { backup_refresh_days: Record<string, number> } | null;
   /** Growth check-ins. */
@@ -149,7 +163,17 @@ async function mockSupabase(page: Page, lab: Lab) {
     if (path.startsWith('/auth/v1/user')) return json(session().user);
     if (path.startsWith('/auth/v1/otp')) return json({});
     if (path.startsWith('/rest/v1/members')) {
-      return json([{ account_id: ACCOUNT_ID, user_id: USER_ID, role: 'owner', initials: 'KL', accounts: { name: "Kyle's Lab" } }]);
+      const user = url.searchParams.get('user_id')?.replace(/^eq\./, '');
+      const account = url.searchParams.get('account_id')?.replace(/^eq\./, '');
+      return json(lab.members.filter((m) => (!user || m.user_id === user) && (!account || m.account_id === account)));
+    }
+    if (path.startsWith('/rest/v1/invites')) {
+      if (req.method() === 'PATCH') {
+        const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+        lab.invites.filter((i) => i.id === id).forEach((i) => (i.revoked_at = new Date().toISOString()));
+        return json([]);
+      }
+      return json(lab.invites.filter((i) => !i.revoked_at && !i.accepted_at));
     }
     if (path.startsWith('/rest/v1/strains')) {
       const s = { id: STRAIN_ID, account_id: ACCOUNT_ID, name: 'Blue Oyster', species: 'Pleurotus ostreatus', notes: null, created_at: MADE_ON };
@@ -241,6 +265,31 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
+      if (fn === 'invite_member') {
+        const row = { id: `inv-${lab.invites.length + 1}`, role: body.p_role, created_at: new Date().toISOString(), expires_at: '2026-12-31T00:00:00Z', revoked_at: null, accepted_at: null };
+        lab.invites.push(row);
+        return json([{ ...row, code: 'K7QD-M3XP' }]);
+      }
+      if (fn === 'accept_invite') {
+        if (String(body.p_code).replace(/[^A-Z0-9]/gi, '').toUpperCase() !== 'JOIN2LAB') {
+          return json({ message: "That code isn't valid. Codes work once and expire after 7 days; ask for a new one.", code: 'P0002' }, 400);
+        }
+        lab.members.push({ account_id: OTHER_LAB_ID, user_id: USER_ID, role: 'viewer', initials: String(body.p_initials), accounts: { name: 'Friend Lab' }, created_at: new Date().toISOString() });
+        return json(OTHER_LAB_ID);
+      }
+      if (fn === 'set_member_role') {
+        lab.members.filter((m) => m.account_id === body.p_account_id && m.user_id === body.p_user_id).forEach((m) => (m.role = body.p_role));
+        return json(null);
+      }
+      if (fn === 'remove_member') {
+        lab.members = lab.members.filter((m) => !(m.account_id === body.p_account_id && m.user_id === body.p_user_id));
+        return json(null);
+      }
+      if (fn === 'create_account') {
+        const id = `00000000-0000-4000-8000-0000000000${String(lab.members.length + 10).padStart(2, '0')}`;
+        lab.members.push({ account_id: id, user_id: USER_ID, role: 'owner', initials: String(body.p_initials), accounts: { name: String(body.p_name) }, created_at: new Date().toISOString() });
+        return json(id);
+      }
       if (fn === 'stats_rows') {
         return json(lab.statsRows.filter((r) => (r.made_on as string) >= String(body.p_from) && (r.made_on as string) <= String(body.p_to)));
       }
@@ -329,7 +378,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), statsRows: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), invites: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);
