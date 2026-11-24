@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { useMembership } from '@/auth/AuthProvider';
+import { useCanWrite, useMembership } from '@/auth/AuthProvider';
 import { KIND_LABEL, RECIPE_TEMPLATES } from '@/domain/recipes';
 import type { Ingredient, MediaKind } from '@/domain/types';
 import { recipeVersions, saveRecipe } from '@/lib/api';
@@ -25,6 +25,7 @@ const num = (t: string) => Number(t.replace(',', '.'));
 export default function EditRecipe() {
   const { familyId } = useLocalSearchParams<{ familyId?: string }>();
   const { account_id } = useMembership();
+  const canWrite = useCanWrite();
 
   const [name, setName] = useState('');
   const [kind, setKind] = useState<MediaKind>('agar');
@@ -91,6 +92,14 @@ export default function EditRecipe() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!canWrite) {
+    return (
+      <Screen>
+        <Muted>Viewers can&apos;t change this lab.</Muted>
+      </Screen>
+    );
   }
 
   return (

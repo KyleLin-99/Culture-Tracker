@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { useMembership } from '@/auth/AuthProvider';
+import { useCanWrite, useMembership } from '@/auth/AuthProvider';
 import { labelDate } from '@/domain/cultureCode';
 import { formatVolume, recipeLabel, scaleIngredients } from '@/domain/recipes';
 import type { MediaKind, SterilizationMethod } from '@/domain/types';
@@ -39,6 +39,7 @@ function numberOrNull(text: string): number | null {
 // contamination trace compares.
 export default function Batches() {
   const { account_id } = useMembership();
+  const canWrite = useCanWrite();
   const runs = useData(() => listRuns());
   const batches = useData(() => listBatches());
   const recipes = useData(() => listRecipes());
@@ -114,59 +115,63 @@ export default function Batches() {
       <ErrorText>{error ?? runs.error ?? batches.error}</ErrorText>
       {saved && <Text style={styles.body}>{saved}. Write the code on the jar or sleeve.</Text>}
 
-      <SectionTitle>Sterilization or pasteurization run</SectionTitle>
-      <Choices<SterilizationMethod> label="Method" value={method} onChange={setMethod} options={METHODS} />
-      <View style={[styles.row, { alignItems: 'flex-start' }]}>
-        <View style={{ flex: 1 }}>
-          <Field label="PSI" value={psi} onChangeText={setPsi} keyboardType="numeric" placeholder="15" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="Minutes" value={minutes} onChangeText={setMinutes} keyboardType="numeric" placeholder="90" />
-        </View>
-      </View>
-      <Field label="Notes (optional)" value={runNotes} onChangeText={setRunNotes} placeholder="Full load, 20 jars" />
-      <Button title="Log run" onPress={addRun} busy={busy === 'run'} />
-
-      <SectionTitle>Media batch</SectionTitle>
-      <Choices<MediaKind> label="Kind" value={kind} onChange={setKind} options={KINDS} />
-      {kindRecipes.length > 0 ? (
-        <Choices<string>
-          label="Recipe"
-          value={chosen ? chosen.id : ''}
-          onChange={setRecipeId}
-          options={[{ value: '', label: 'None' }, ...kindRecipes.map((r) => ({ value: r.id, label: recipeLabel(r) }))]}
-        />
-      ) : (
-        <LinkText title="Save a recipe to pick it here ›" onPress={() => router.push('/recipes/edit')} />
-      )}
-      {chosen && (
+      {canWrite && (
         <>
-          <Field
-            label="Batch size (ml)"
-            value={volume}
-            onChangeText={setVolume}
-            keyboardType="numeric"
-            placeholder={String(chosen.volume_ml)}
+        <SectionTitle>Sterilization or pasteurization run</SectionTitle>
+        <Choices<SterilizationMethod> label="Method" value={method} onChange={setMethod} options={METHODS} />
+        <View style={[styles.row, { alignItems: 'flex-start' }]}>
+          <View style={{ flex: 1 }}>
+            <Field label="PSI" value={psi} onChangeText={setPsi} keyboardType="numeric" placeholder="15" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Minutes" value={minutes} onChangeText={setMinutes} keyboardType="numeric" placeholder="90" />
+          </View>
+        </View>
+        <Field label="Notes (optional)" value={runNotes} onChangeText={setRunNotes} placeholder="Full load, 20 jars" />
+        <Button title="Log run" onPress={addRun} busy={busy === 'run'} />
+
+        <SectionTitle>Media batch</SectionTitle>
+        <Choices<MediaKind> label="Kind" value={kind} onChange={setKind} options={KINDS} />
+        {kindRecipes.length > 0 ? (
+          <Choices<string>
+            label="Recipe"
+            value={chosen ? chosen.id : ''}
+            onChange={setRecipeId}
+            options={[{ value: '', label: 'None' }, ...kindRecipes.map((r) => ({ value: r.id, label: recipeLabel(r) }))]}
           />
-          <IngredientCard
-            ingredients={scaleIngredients(chosen.ingredients, chosen.volume_ml, batchMl ?? chosen.volume_ml)}
-            volumeMl={batchMl ?? chosen.volume_ml}
-          />
+        ) : (
+          <LinkText title="Save a recipe to pick it here ›" onPress={() => router.push('/recipes/edit')} />
+        )}
+        {chosen && (
+          <>
+            <Field
+              label="Batch size (ml)"
+              value={volume}
+              onChangeText={setVolume}
+              keyboardType="numeric"
+              placeholder={String(chosen.volume_ml)}
+            />
+            <IngredientCard
+              ingredients={scaleIngredients(chosen.ingredients, chosen.volume_ml, batchMl ?? chosen.volume_ml)}
+              volumeMl={batchMl ?? chosen.volume_ml}
+            />
+          </>
+        )}
+        <Field
+          label={chosen ? 'Recipe notes (optional)' : 'Recipe (optional)'}
+          value={recipe}
+          onChangeText={setRecipe}
+          placeholder={chosen ? 'Used dark malt this time' : 'MEA 2%, 500 ml'}
+        />
+        <Choices<string>
+          label="Sterilized in"
+          value={recentRuns.some((r) => r.id === runId) ? runId : ''}
+          onChange={setRunId}
+          options={[{ value: '', label: 'Not recorded' }, ...recentRuns.map((r) => ({ value: r.id, label: r.code }))]}
+        />
+        <Button title="Log batch" onPress={addBatch} busy={busy === 'batch'} />
         </>
       )}
-      <Field
-        label={chosen ? 'Recipe notes (optional)' : 'Recipe (optional)'}
-        value={recipe}
-        onChangeText={setRecipe}
-        placeholder={chosen ? 'Used dark malt this time' : 'MEA 2%, 500 ml'}
-      />
-      <Choices<string>
-        label="Sterilized in"
-        value={recentRuns.some((r) => r.id === runId) ? runId : ''}
-        onChange={setRunId}
-        options={[{ value: '', label: 'Not recorded' }, ...recentRuns.map((r) => ({ value: r.id, label: r.code }))]}
-      />
-      <Button title="Log batch" onPress={addBatch} busy={busy === 'batch'} />
 
       <SectionTitle>Recent batches</SectionTitle>
       {batches.data?.length === 0 && <Muted>No batches yet.</Muted>}

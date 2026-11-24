@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { useMembership } from '@/auth/AuthProvider';
+import { useCanWrite, useMembership } from '@/auth/AuthProvider';
 import { createStrain, listStrains } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
@@ -11,6 +11,7 @@ import { colors, font, space } from '@/ui/theme';
 
 export default function Strains() {
   const { account_id } = useMembership();
+  const canWrite = useCanWrite();
   const strains = useData(listStrains);
   const [name, setName] = useState('');
   const [species, setSpecies] = useState('');
@@ -49,11 +50,15 @@ export default function Strains() {
         ))}
       </View>
 
-      <SectionTitle>New strain</SectionTitle>
-      <Field label="Strain name" value={name} onChangeText={setName} placeholder="Blue Oyster" />
-      <Field label="Species (optional)" value={species} onChangeText={setSpecies} placeholder="Pleurotus ostreatus" />
-      <ErrorText>{error}</ErrorText>
-      <Button title="Add strain" onPress={add} busy={busy} />
+      {canWrite && (
+        <>
+        <SectionTitle>New strain</SectionTitle>
+        <Field label="Strain name" value={name} onChangeText={setName} placeholder="Blue Oyster" />
+        <Field label="Species (optional)" value={species} onChangeText={setSpecies} placeholder="Pleurotus ostreatus" />
+        <ErrorText>{error}</ErrorText>
+        <Button title="Add strain" onPress={add} busy={busy} />
+        </>
+      )}
     </Screen>
   );
 }

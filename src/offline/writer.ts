@@ -20,6 +20,8 @@ export type WriterDeps = {
   now: () => string;
   /** The signed-in member's initials, for labels made on this phone. */
   initials: string;
+  /** False for viewers: the writer refuses every change. */
+  canWrite?: boolean;
 };
 
 async function insertPlanned(deps: WriterDeps, items: PlannedItem[]): Promise<void> {
@@ -77,7 +79,7 @@ export function localWriter(deps: WriterDeps) {
     return { ids: items.map((i) => i.id) };
   }
 
-  return {
+  const writer = {
     /** Returns the new ids; read them back after a sync attempt for their final codes. */
     async createTransfers(args: { parentId: string; count: number; medium: Medium; madeOn: string; mediaBatchId?: string | null; location?: string | null }) {
       const items = await planTransfers(db, deps.newId, args);
@@ -292,6 +294,24 @@ export function localWriter(deps: WriterDeps) {
 
     readItems: (ids: string[]) => readItems(db, ids),
   };
+  return deps.canWrite === false ? readOnly(writer) : writer;
+}
+
+/** Same message the server gives (save_recipe and friends). */
+export const VIEWER_REFUSAL = "Viewers can't change this lab";
+
+/**
+ * A viewer's phone: every change is refused before it's queued, so nothing waits
+ * in the outbox only to be refused by the server. Reading back items still works.
+ */
+function readOnly<T extends Record<string, unknown>>(writer: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [name, fn] of Object.entries(writer)) {
+    out[name] = name === 'readItems' ? fn : async () => {
+      throw new Error(VIEWER_REFUSAL);
+    };
+  }
+  return out as T;
 }
 
 export type LocalWriter = ReturnType<typeof localWriter>;

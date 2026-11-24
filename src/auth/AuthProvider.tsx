@@ -117,6 +117,11 @@ export function useAuth(): AuthState {
   return ctx;
 }
 
+/** Owners and techs record work; viewers only look. */
+export function useCanWrite(): boolean {
+  return useMembership().role !== 'viewer';
+}
+
 /** The signed-in member. Only call from screens inside the (app) group. */
 export function useMembership(): Membership {
   const { membership } = useAuth();

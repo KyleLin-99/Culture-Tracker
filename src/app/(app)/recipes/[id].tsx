@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { useCanWrite } from '@/auth/AuthProvider';
 import { labelDate } from '@/domain/cultureCode';
 import { formatVolume, KIND_LABEL, recipeLabel, scaleIngredients } from '@/domain/recipes';
 import { archiveRecipe, recipeVersions } from '@/lib/api';
@@ -13,6 +14,7 @@ import { space } from '@/ui/theme';
 
 export default function RecipeDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const canWrite = useCanWrite();
   const versions = useData(() => recipeVersions(id), id);
   const [shownVersion, setShownVersion] = useState<number | null>(null);
   const [volume, setVolume] = useState('');
@@ -83,7 +85,7 @@ export default function RecipeDetail() {
       ) : null}
 
       <ErrorText>{error}</ErrorText>
-      {!archived && (
+      {!archived && canWrite && (
         <View style={{ gap: space.sm }}>
           <Button
             title={`Edit (saves as v${latest.version + 1})`}

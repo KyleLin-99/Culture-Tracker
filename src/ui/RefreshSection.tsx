@@ -18,7 +18,18 @@ const open = (id: string) => router.push({ pathname: '/items/[id]', params: { id
  * grown from the backup), then retire the old one once the new one is growing.
  * Any culture made as a refresh links back to the backup it replaced.
  */
-export function RefreshSection({ item, parent, onChanged }: { item: Item; parent: TreeRow | null; onChanged: () => void }) {
+export function RefreshSection({
+  item,
+  parent,
+  onChanged,
+  canWrite = true,
+}: {
+  item: Item;
+  parent: TreeRow | null;
+  onChanged: () => void;
+  /** Viewers see refresh links but no Refresh or Retire buttons. */
+  canWrite?: boolean;
+}) {
   const info = useData(() => refreshInfo(item.id), `${item.id}:${item.status}`);
   const [confirming, setConfirming] = useState(false);
   const [made, setMade] = useState<Item | null>(null);
@@ -56,7 +67,7 @@ export function RefreshSection({ item, parent, onChanged }: { item: Item; parent
             <Text style={styles.body}>Refreshed by</Text>
             <LinkText title={`${by.code} ›`} onPress={() => open(by.id)} />
           </View>
-          {by.checks > 0 ? (
+          {!canWrite ? null : by.checks > 0 ? (
             <Button
               title="Retire this backup"
               variant="secondary"
@@ -69,7 +80,7 @@ export function RefreshSection({ item, parent, onChanged }: { item: Item; parent
         </Card>
       )}
 
-      {isActiveBackup && !(by && refreshAlive(by)) && !made && (
+      {canWrite && isActiveBackup && !(by && refreshAlive(by)) && !made && (
         <>
           {by && <Muted>The last refresh ({by.code}) was {by.status}.</Muted>}
           <Button title="Refresh backup" variant="secondary" onPress={() => setConfirming(!confirming)} />

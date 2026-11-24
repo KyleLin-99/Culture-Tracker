@@ -100,7 +100,7 @@ notes, expired or revoked tokens).
 
 1. Roles + policies (no UI change for a solo lab: Kyle stays owner). **Built.**
 2. Invites + People screen + more than one lab per user + lab switcher. **Built.**
-3. Viewer mode on phones.
+3. Viewer mode on phones. **Built** (web too).
 4. Shared lineage links.
 
 ## Open questions for Kyle

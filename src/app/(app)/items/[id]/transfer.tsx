@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { useCanWrite } from '@/auth/AuthProvider';
 import { labelDate, TRANSFER_MEDIA, todayLocal } from '@/domain/cultureCode';
 import { batchKindFor } from '@/domain/trace';
 import type { Item, Medium } from '@/domain/types';
@@ -14,6 +15,7 @@ import { colors, space } from '@/ui/theme';
 // "10 plates from S-2A": creates them all with consecutive codes, then shows
 // the labels to write.
 export default function Transfer() {
+  const canWrite = useCanWrite();
   const { id } = useLocalSearchParams<{ id: string }>();
   const parent = useData(() => getItem(id), id);
   const [count, setCount] = useState(1);
@@ -83,6 +85,14 @@ export default function Transfer() {
             setCount(1);
           }}
         />
+      </Screen>
+    );
+  }
+
+  if (!canWrite) {
+    return (
+      <Screen>
+        <Muted>Viewers can&apos;t change this lab.</Muted>
       </Screen>
     );
   }

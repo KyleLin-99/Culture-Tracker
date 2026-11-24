@@ -13,13 +13,13 @@ import { colors, space } from '@/ui/theme';
 export const unstable_settings = { initialRouteName: 'index' };
 
 export default function AppLayout() {
-  const { account_id, initials } = useMembership();
+  const { account_id, initials, role } = useMembership();
 
   // Phones keep a local copy of the lab in sync while signed in (no-op on web).
   useEffect(() => {
     let stop: (() => void) | undefined;
     let cancelled = false;
-    void startSync(account_id, initials).then((s) => {
+    void startSync(account_id, initials, role !== 'viewer').then((s) => {
       if (cancelled) s();
       else stop = s;
     });
@@ -27,7 +27,7 @@ export default function AppLayout() {
       cancelled = true;
       stop?.();
     };
-  }, [account_id, initials]);
+  }, [account_id, initials, role]);
 
   return (
     <Stack

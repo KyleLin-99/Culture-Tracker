@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Text } from 'react-native';
 
-import { useMembership } from '@/auth/AuthProvider';
+import { useCanWrite, useMembership } from '@/auth/AuthProvider';
 import { ORIGIN_TYPES } from '@/domain/cultureCode';
 import type { Medium } from '@/domain/types';
 import { createOrigin, getStrain, strainTree } from '@/lib/api';
@@ -24,6 +24,7 @@ const SOURCE_MEDIA: { value: Medium; label: string }[] = [
 export default function StrainDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { account_id } = useMembership();
+  const canWrite = useCanWrite();
   const strain = useData(() => getStrain(id), id);
   const tree = useData(() => strainTree(id), id);
 
@@ -73,33 +74,37 @@ export default function StrainDetail() {
         <TreeList rows={tree.data ?? []} />
       )}
 
-      <SectionTitle>New origin</SectionTitle>
-      <Choices<OriginChoice>
-        label="Where it came from"
-        value={choice}
-        onChange={setChoice}
-        options={[
-          { value: 'S', label: 'Spore print (S)' },
-          { value: 'W', label: 'Wild clone (W)' },
-          { value: 'C', label: 'Clone of my fruit (C)' },
-          { value: 'SOURCE', label: 'Person or company' },
-        ]}
-      />
-      {choice === 'SOURCE' && (
+      {canWrite && (
         <>
-          <Field
-            label="Their initials"
-            value={sourceInitials}
-            onChangeText={(t) => setSourceInitials(t.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6))}
-            autoCapitalize="characters"
-            placeholder="TBG"
-          />
-          <Choices<Medium> label="What you received" value={sourceMedium} onChange={setSourceMedium} options={SOURCE_MEDIA} />
+        <SectionTitle>New origin</SectionTitle>
+        <Choices<OriginChoice>
+          label="Where it came from"
+          value={choice}
+          onChange={setChoice}
+          options={[
+            { value: 'S', label: 'Spore print (S)' },
+            { value: 'W', label: 'Wild clone (W)' },
+            { value: 'C', label: 'Clone of my fruit (C)' },
+            { value: 'SOURCE', label: 'Person or company' },
+          ]}
+        />
+        {choice === 'SOURCE' && (
+          <>
+            <Field
+              label="Their initials"
+              value={sourceInitials}
+              onChangeText={(t) => setSourceInitials(t.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6))}
+              autoCapitalize="characters"
+              placeholder="TBG"
+            />
+            <Choices<Medium> label="What you received" value={sourceMedium} onChange={setSourceMedium} options={SOURCE_MEDIA} />
+          </>
+        )}
+        <Muted>The first one gets no number (S). Later ones in this strain get 2, 3… (S2, S3).</Muted>
+        <ErrorText>{error}</ErrorText>
+        <Button title="Add origin" onPress={addOrigin} busy={busy} />
         </>
       )}
-      <Muted>The first one gets no number (S). Later ones in this strain get 2, 3… (S2, S3).</Muted>
-      <ErrorText>{error}</ErrorText>
-      <Button title="Add origin" onPress={addOrigin} busy={busy} />
     </Screen>
   );
 }

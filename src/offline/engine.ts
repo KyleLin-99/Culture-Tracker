@@ -28,6 +28,7 @@ const supabaseWrite = createWriteRemote(supabase);
 let dbPromise: Promise<SqlDb | null> | null = null;
 let accountId: string | null = null;
 let initials = '';
+let canWrite = true;
 /** The local copy holds a complete first pull for the signed-in lab. */
 let ready = false;
 let syncing: Promise<void> | null = null;
@@ -96,9 +97,10 @@ export async function syncNow(): Promise<void> {
  * foreground, when the connection returns, and every 2 minutes.
  * Returns a function that stops it. Does nothing on web.
  */
-export async function startSync(lab: string, memberInitials: string): Promise<() => void> {
+export async function startSync(lab: string, memberInitials: string, memberCanWrite = true): Promise<() => void> {
   accountId = lab;
   initials = memberInitials;
+  canWrite = memberCanWrite;
   const db = await localDb();
   if (!db) return () => {};
 
@@ -149,7 +151,7 @@ export async function localWriter(): Promise<LocalWriter | null> {
   if (!ready) return null;
   const db = await localDb();
   if (!db) return null;
-  return makeWriter({ db, newId: () => Crypto.randomUUID(), now: () => new Date().toISOString(), initials });
+  return makeWriter({ db, newId: () => Crypto.randomUUID(), now: () => new Date().toISOString(), initials, canWrite });
 }
 
 /** Changes the server refused, for the home screen. Empty on web. */
