@@ -10,19 +10,31 @@ test('a culture opened from a link still has a way home', async ({ signedIn: pag
 });
 
 test('a culture links up to its strain, and the strain to all strains', async ({ signedIn: page }) => {
-  await page.goto('/');
-  // Dig a few cultures deep through the lineage.
-  await page.getByText('TBG-2A', { exact: true }).first().click();
-  await page.locator('[data-testid="tree-row-TBG"]').click();
-  await page.locator('[data-testid="tree-row-TBG-3"]').click();
+  // Web keeps earlier screens in the page (hidden), and new ones slide in. So every
+  // step looks only at what's showing and waits for its screen before the next tap.
+  // Each step has its own time limit so a failure names the step.
+  const showing = (testId: string) => page.getByTestId(testId).filter({ visible: true });
+  const opened = async (path: RegExp) => expect(page).toHaveURL(path, { timeout: 10_000 });
 
-  await page.getByRole('link', { name: '‹ Blue Oyster' }).click();
-  await expect(page.getByText('Family tree')).toBeVisible();
+  await test.step('dig a few cultures deep through the lineage', async () => {
+    await page.goto('/items/t-2a');
+    await showing('tree-row-TBG').click({ timeout: 10_000 });
+    await opened(/\/items\/o-tbg$/);
+    await showing('tree-row-TBG-3').click({ timeout: 10_000 });
+    await opened(/\/items\/t-3$/);
+  });
 
-  await page.getByRole('link', { name: '‹ All strains' }).click();
-  await expect(page).toHaveURL(/\/strains$/);
-  // Web keeps earlier screens in the page (hidden), so look only at what's showing.
-  await expect(page.getByText('Blue Oyster', { exact: true }).filter({ visible: true })).toBeVisible();
+  await test.step('culture → its strain', async () => {
+    await page.getByRole('link', { name: '‹ Blue Oyster' }).filter({ visible: true }).click({ timeout: 10_000 });
+    await opened(/\/strains\/[^/]+$/);
+    await expect(page.getByText('Family tree').filter({ visible: true })).toBeVisible();
+  });
+
+  await test.step('strain → all strains', async () => {
+    await page.getByRole('link', { name: '‹ All strains' }).filter({ visible: true }).click({ timeout: 10_000 });
+    await opened(/\/strains$/);
+    await expect(page.getByText('Blue Oyster', { exact: true }).filter({ visible: true })).toBeVisible();
+  });
 });
 
 test('a note can be edited', async ({ signedIn: page, lab }) => {
