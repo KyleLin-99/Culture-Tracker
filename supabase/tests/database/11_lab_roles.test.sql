@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(22);
+select plan(28);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'owner@example.com'),
@@ -53,6 +53,12 @@ select lives_ok($$ select public.save_recipe(tests.lab(), null, 'MEA', 'agar', 5
   'a tech can save recipes');
 select throws_ok($$ select public.set_backup_refresh(tests.lab(), '{"lc": 30}') $$,
   '42501', 'Only the lab''s owners can change lab settings', 'a tech can''t change lab settings');
+select lives_ok(
+  $$ insert into public.technique_changes (account_id, changed_on, title) values
+       (tests.lab(), '2026-11-01', 'Started using a flow hood'), (tests.lab(), '2026-11-02', 'Typo') $$,
+  'a tech can add technique changes');
+update public.technique_changes set deleted_at = now() where title = 'Typo';
+select ok((select deleted_at is not null from public.technique_changes where title = 'Typo'), 'a tech can remove a technique change');
 update public.accounts set name = 'Renamed by tech' where id = tests.lab();
 select is((select name from public.accounts where id = tests.lab()), 'Lab A', 'a tech can''t rename the lab');
 
@@ -72,6 +78,15 @@ select throws_ok($$ select public.apply_check(gen_random_uuid(), tests.id('S-1')
   '42501', null, 'a viewer can''t log growth checks');
 select throws_ok($$ select public.save_recipe(tests.lab(), null, 'PDA', 'agar', 500, '[{"name": "Agar", "amount": 10, "unit": "g"}]') $$,
   '42501', 'Viewers can''t change this lab', 'a viewer can''t save recipes');
+select is((select count(*)::int from public.technique_changes where deleted_at is null), 1, 'a viewer reads technique changes');
+select throws_ok($$ insert into public.technique_changes (account_id, changed_on, title) values (tests.lab(), '2026-11-03', 'Viewer') $$,
+  '42501', null, 'a viewer can''t add technique changes');
+update public.technique_changes set title = 'Edited by viewer', deleted_at = now() where title = 'Started using a flow hood';
+reset role;
+select is((select deleted_at from public.technique_changes where title = 'Started using a flow hood'), null,
+  'a viewer can''t edit or remove technique changes');
+set local role authenticated;
+select tests.sign_in('00000000-0000-0000-0000-00000000000c');
 select throws_ok($$ select public.set_item_status(tests.id('S-1'), 'discarded') $$,
   'P0002', null, 'a viewer''s status change finds nothing it may change');
 update public.items set location = 'fridge' where id = tests.id('S-1');
@@ -92,6 +107,8 @@ select lives_ok($$ select public.set_backup_refresh(tests.lab(), '{"lc": 30}') $
 update public.accounts set name = 'Lab A (renamed)' where id = tests.lab();
 select is((select name from public.accounts where id = tests.lab()), 'Lab A (renamed)', 'the owner renames the lab');
 select lives_ok($$ select public.create_transfers(tests.id('S-1'), 1, 'agar') $$, 'the owner records work too');
+select lives_ok($$ insert into public.technique_changes (account_id, changed_on, title) values (tests.lab(), '2026-11-04', 'MEA 2%') $$,
+  'the owner adds technique changes');
 
 select * from finish();
 rollback;

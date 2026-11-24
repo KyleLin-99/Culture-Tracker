@@ -422,6 +422,56 @@ suite('offline sync against real Supabase', () => {
     expect((await api.itemsOnBatches([mb1.id, mb2.id])).map((i) => i.code)).toEqual(['C-1A', 'C-3', 'C-1', 'C-2']);
   });
 
+  // Stats reads technique changes on phones from the local copy and on the web
+  // from the server (src/lib/api.ts listTechniqueChanges); both must answer the same.
+  it("the phone's technique changes answer like the server's, and a viewer can't add one", async () => {
+    mockServer = lab.client;
+    api.setCurrentLab(lab.accountId);
+    const acct = lab.accountId;
+    await api.addTechniqueChange({ accountId: acct, changedOn: '2026-10-01', title: '  Started using a flow hood  ', note: 'Laminar flow' });
+    await api.addTechniqueChange({ accountId: acct, changedOn: '2026-09-01', title: 'MEA 2%', note: '   ' });
+    await api.addTechniqueChange({ accountId: acct, changedOn: '2026-10-01', title: 'Same day, added later' });
+    await api.addTechniqueChange({ accountId: acct, changedOn: '2026-08-01', title: 'Typo' });
+    const typo = (await admin.query("select id from technique_changes where account_id = $1 and title = 'Typo'", [acct])).rows[0].id as string;
+    await api.removeTechniqueChange(typo);
+    expect((await admin.query('select deleted_at from technique_changes where id = $1', [typo])).rows[0].deleted_at).not.toBeNull();
+
+    // Another lab's change must not show up in either.
+    const other = await newLab(env as TestEnv, admin, 'Other lab');
+    must(await other.client.from('technique_changes').insert({ account_id: other.accountId, changed_on: '2026-09-15', title: 'Other lab change' }));
+
+    const server = await api.listTechniqueChanges();
+    expect(server.map((c) => [String(c.changed_on), c.title, c.note])).toEqual([
+      ['2026-09-01', 'MEA 2%', null],
+      ['2026-10-01', 'Started using a flow hood', 'Laminar flow'],
+      ['2026-10-01', 'Same day, added later', null],
+    ]);
+    const p = await phone();
+    const fields = (c: Awaited<ReturnType<typeof api.listTechniqueChanges>>[number]) =>
+      [c.id, c.account_id, String(c.changed_on), c.title, c.note, Date.parse(c.created_at)];
+    expect((await p.q.listTechniqueChanges()).map(fields)).toEqual(server.map(fields));
+
+    // A removal on the web reaches the phone on its next sync.
+    await api.removeTechniqueChange(server[0].id);
+    await p.sync();
+    expect((await p.q.listTechniqueChanges()).map((c) => c.title)).toEqual(['Started using a flow hood', 'Same day, added later']);
+
+    // A viewer reads them but can't add or remove one.
+    const viewer = await newUser(env as TestEnv, admin);
+    await admin.query("insert into members (account_id, user_id, role, initials) values ($1, $2, 'viewer', 'VW')", [acct, viewer.id]);
+    mockServer = viewer.client;
+    expect((await api.listTechniqueChanges()).map((c) => c.title)).toEqual(['Started using a flow hood', 'Same day, added later']);
+    await expect(api.addTechniqueChange({ accountId: acct, changedOn: '2026-11-01', title: 'Viewer change' })).rejects.toMatchObject({
+      message: expect.stringMatching(/row-level security/),
+    });
+    await api.removeTechniqueChange(server[1].id); // RLS hides the row: nothing changes
+    const live = (await admin.query('select title from technique_changes where account_id = $1 and deleted_at is null order by title', [acct])).rows;
+    expect(live.map((r) => r.title)).toEqual(['Same day, added later', 'Started using a flow hood']);
+
+    mockServer = lab.client;
+    api.setCurrentLab(null);
+  });
+
   // Bug: someone in two labs saw both labs on their phone (and in lists) after
   // switching. RLS allows every lab you belong to; the pull must name the lab.
   // Kept last: it gives this file's user a second lab.

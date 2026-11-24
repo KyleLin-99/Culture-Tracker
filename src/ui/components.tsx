@@ -105,7 +105,9 @@ export function Choices<T extends string>({
             <Pressable
               key={o.value}
               accessibilityRole="radio"
-              accessibilityState={{ selected }}
+              accessibilityState={{ selected, checked: selected }}
+              // react-native-web ignores accessibilityState; aria-checked reaches browsers and screen readers.
+              aria-checked={selected}
               onPress={() => onChange(o.value)}
               style={[styles.chip, selected && styles.chipSelected]}
             >

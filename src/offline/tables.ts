@@ -3,6 +3,7 @@
 
 export const TABLES = {
   lab_settings: ['id', 'account_id', 'backup_refresh_days', 'created_at', 'updated_at', 'deleted_at'],
+  technique_changes: ['id', 'account_id', 'changed_on', 'title', 'note', 'created_at', 'updated_at', 'deleted_at'],
   strains: ['id', 'account_id', 'name', 'species', 'notes', 'created_at', 'updated_at', 'deleted_at'],
   sterilization_runs: [
     'id', 'account_id', 'code', 'method', 'psi', 'minutes', 'run_on', 'notes', 'created_at', 'updated_at', 'deleted_at',
@@ -40,7 +41,7 @@ export const PENDING_TABLES: TableName[] = ['strains', 'items', 'events', 'colon
 export type TableName = keyof typeof TABLES;
 
 /** Pull order: parents before the rows that point at them. */
-export const PULL_ORDER: TableName[] = ['lab_settings', 'strains', 'sterilization_runs', 'recipes', 'media_batches', 'items', 'events', 'colonization_checks', 'relabels'];
+export const PULL_ORDER: TableName[] = ['lab_settings', 'technique_changes', 'strains', 'sterilization_runs', 'recipes', 'media_batches', 'items', 'events', 'colonization_checks', 'relabels'];
 
 /** A row as it arrives from Supabase. */
 export type RemoteRow = Record<string, unknown> & { id: string; updated_at: string };

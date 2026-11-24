@@ -406,3 +406,39 @@ describe('batch and run pages', () => {
     expect(first.media_batches).toEqual({ code: 'MB-001', sterilization_runs: { code: 'SR-001' } });
   });
 });
+
+// listTechniqueChanges() is the phone's version of api.ts listTechniqueChanges():
+// the same columns, removed ones left out, oldest first (changed_on, then created_at).
+describe('listTechniqueChanges', () => {
+  it('lists live changes oldest first, ties by when they were added, with the server columns only', async () => {
+    const db = await openTestDb();
+    await migrate(db);
+    const lab = emptyLab();
+    const change = (id: string, changedOn: string, createdAt: string, deletedAt: string | null = null) => ({
+      id, account_id: ACCOUNT, changed_on: changedOn, title: `Change ${id}`, note: id === 'tc-b' ? 'MEA at 2%' : null,
+      created_at: createdAt, updated_at: tick(), deleted_at: deletedAt,
+    });
+    // Added out of order on purpose.
+    lab.technique_changes.push(
+      change('tc-c', '2026-11-10', '2026-11-10T08:00:00Z'),
+      change('tc-b', '2026-10-01', '2026-10-02T18:00:00Z'),
+      change('tc-a', '2026-10-01', '2026-10-01T09:00:00Z'),
+      change('tc-gone', '2026-09-01', '2026-09-01T09:00:00Z', '2026-09-02T00:00:00Z'),
+    );
+    await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: '2025-11-23' });
+
+    const changes = await localQueries(db).listTechniqueChanges();
+    expect(changes.map((c) => c.id)).toEqual(['tc-a', 'tc-b', 'tc-c']);
+    expect(changes[1]).toEqual({
+      id: 'tc-b', account_id: ACCOUNT, changed_on: '2026-10-01', title: 'Change tc-b', note: 'MEA at 2%', created_at: '2026-10-02T18:00:00Z',
+    });
+    db.close();
+  });
+
+  it('is empty before anything is added', async () => {
+    const db = await openTestDb();
+    await migrate(db);
+    expect(await localQueries(db).listTechniqueChanges()).toEqual([]);
+    db.close();
+  });
+});

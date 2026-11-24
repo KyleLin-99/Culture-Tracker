@@ -291,6 +291,7 @@ function addOtherLab(lab: ReturnType<typeof emptyLab>) {
   lab.events.push({ ...base, id: 'o-ev', item_id: 'o-item', type: 'note', occurred_at: '2026-11-20T10:00:00Z', note: 'other', contam_type: null, photo_key: null });
   lab.colonization_checks.push({ ...base, id: 'o-ck', item_id: 'o-item', checked_on: '2026-11-21', percent: 50, radius_mm: null, note: null, source: 'manual' });
   lab.relabels.push({ ...base, id: 'o-rl', entity: 'item', entity_id: 'o-item', old_code: 'S', new_code: 'S2', resolved_at: null });
+  lab.technique_changes.push({ ...base, id: 'o-tc', changed_on: '2026-11-01', title: 'Other lab flow hood', note: null });
   return lab;
 }
 
@@ -385,5 +386,65 @@ describe('lab settings', () => {
     await pull(db, fakeRemote(emptyLab()).remote, { accountId: 'acct-2', historyFrom: HISTORY_FROM });
     expect(await count('lab_settings')).toBe(0);
     expect(await localQueries(db).backupRefreshSettings()).toEqual({});
+  });
+});
+
+describe('technique changes', () => {
+  const change = (id: string, changedOn: string, title: string, at = tick()) => ({
+    id, account_id: ACCOUNT, changed_on: changedOn, title, note: null, created_at: at, updated_at: at, deleted_at: null,
+  });
+
+  it('schema step 8 upgrades a phone on version 7: keeps its copy and pending changes, then pulls every change', async () => {
+    const old = await openTestDb();
+    await migrate(old, 7);
+    const lab = standardLab();
+    await insertAsOldPhone(old, 'items', lab.items.slice(0, 3));
+    await setMeta(old, 'account_id', ACCOUNT);
+    await setMeta(old, 'first_pull_done', '1');
+    await setMeta(old, 'pulled_until_items', '2026-11-23T00:00:00Z');
+    await old.run("insert into outbox (op, payload, created_at) values ('status', '{}', '2026-11-23T12:00:00Z')");
+    expect(await old.first("select name from sqlite_master where name = 'technique_changes'")).toBeFalsy();
+
+    // Added on the web long before this phone upgraded: the first pull of a new table takes every row.
+    lab.technique_changes.push(change('tc-1', '2024-01-05', 'Started using a flow hood', '2024-01-05T00:00:00Z'));
+    await migrate(old);
+    expect((await old.first<{ user_version: number }>('pragma user_version'))!.user_version).toBe(SCHEMA_VERSION);
+    expect((await old.first<{ n: number }>('select count(*) as n from outbox'))!.n).toBe(1);
+    expect((await old.first<{ n: number }>('select count(*) as n from items'))!.n).toBe(3);
+    expect(await localQueries(old).listTechniqueChanges()).toEqual([]);
+
+    await pull(old, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect((await localQueries(old).listTechniqueChanges()).map((c) => [c.id, c.changed_on, c.title])).toEqual([
+      ['tc-1', '2024-01-05', 'Started using a flow hood'],
+    ]);
+    old.close();
+  });
+
+  it('picks up new and removed changes on later pulls', async () => {
+    const lab = standardLab();
+    lab.technique_changes.push(change('tc-1', '2026-10-01', 'Flow hood'));
+    const { remote } = fakeRemote(lab);
+    await pull(db, remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect((await localQueries(db).listTechniqueChanges()).map((c) => c.id)).toEqual(['tc-1']);
+
+    lab.technique_changes.push(change('tc-2', '2026-09-01', 'MEA 2%'));
+    await pull(db, remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect((await localQueries(db).listTechniqueChanges()).map((c) => c.id)).toEqual(['tc-2', 'tc-1']);
+
+    Object.assign(lab.technique_changes[0], { deleted_at: tick(), updated_at: tick() });
+    await pull(db, remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect((await localQueries(db).listTechniqueChanges()).map((c) => c.id)).toEqual(['tc-2']);
+  });
+
+  it('pulls only the lab being synced, and a lab switch clears them', async () => {
+    const lab = addOtherLab(standardLab());
+    lab.technique_changes.push(change('tc-1', '2026-10-01', 'Flow hood'));
+    await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: HISTORY_FROM });
+    expect(await accountsIn(db, 'technique_changes')).toEqual([ACCOUNT]);
+    expect((await localQueries(db).listTechniqueChanges()).map((c) => c.title)).toEqual(['Flow hood']);
+
+    await pull(db, fakeRemote(lab).remote, { accountId: OTHER, historyFrom: HISTORY_FROM });
+    expect(await accountsIn(db, 'technique_changes')).toEqual([OTHER]);
+    expect((await localQueries(db).listTechniqueChanges()).map((c) => c.title)).toEqual(['Other lab flow hood']);
   });
 });

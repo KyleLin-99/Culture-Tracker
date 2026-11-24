@@ -28,6 +28,7 @@ import type {
   SterilizationMethod,
   SterilizationRun,
   Strain,
+  TechniqueChange,
   TraceRow,
   TreeRow,
 } from '@/domain/types';
@@ -728,6 +729,47 @@ export async function saveRecipe(args: {
 /** Hides a recipe (every version) from pickers; batches keep pointing at it. */
 export async function archiveRecipe(familyId: string): Promise<void> {
   unwrap(await supabase.rpc('archive_recipe', { p_family_id: familyId }));
+  await afterWrite();
+}
+
+// --- Technique changes ---------------------------------------------------------
+// Saved online (like batches); phones keep a read-only copy for the Stats trend.
+
+/** Technique changes in this lab, oldest first. */
+export async function listTechniqueChanges(): Promise<TechniqueChange[]> {
+  const local = await localReader();
+  if (local) return local.listTechniqueChanges();
+  return unwrap(
+    await supabase
+      .from('technique_changes')
+      .select('id, account_id, changed_on, title, note, created_at')
+      .eq('account_id', lab())
+      .is('deleted_at', null)
+      .order('changed_on')
+      .order('created_at'),
+  );
+}
+
+export async function addTechniqueChange(args: {
+  accountId: string;
+  changedOn: string;
+  title: string;
+  note?: string;
+}): Promise<void> {
+  unwrap(
+    await supabase.from('technique_changes').insert({
+      account_id: args.accountId,
+      changed_on: args.changedOn,
+      title: args.title.trim(),
+      note: args.note?.trim() || null,
+    }),
+  );
+  await afterWrite();
+}
+
+/** Removes a technique change (kept in the database with deleted_at set). */
+export async function removeTechniqueChange(id: string): Promise<void> {
+  unwrap(await supabase.from('technique_changes').update({ deleted_at: new Date().toISOString() }).eq('id', id));
   await afterWrite();
 }
 

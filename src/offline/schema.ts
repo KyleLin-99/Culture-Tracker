@@ -4,7 +4,7 @@ import type { SqlDb } from './sql';
 // minus server-only rules: the server stays the source of truth.
 // Bump SCHEMA_VERSION and add a step to MIGRATIONS for any change.
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -109,6 +109,13 @@ const MIGRATIONS: Record<number, string> = {
       .map((t) => `delete from ${t} where account_id <> coalesce((select value from meta where key = 'account_id'), account_id);`)
       .join('\n    ')}
   `,
+  // Technique changes (read-only on the phone): markers on the contamination trend.
+  8: `
+    create table technique_changes (
+      id text primary key, account_id text not null, changed_on text not null, title text not null, note text,
+      created_at text, updated_at text not null, deleted_at text
+    );
+  `,
 };
 
 /** Creates or upgrades the local tables. Safe to call on every app start. */
@@ -137,7 +144,7 @@ export async function setMeta(db: SqlDb, key: string, value: string | null): Pro
 export async function clearAll(db: SqlDb): Promise<void> {
   await db.transaction(async () => {
     await db.exec(
-      'delete from outbox; delete from lab_settings; delete from relabels; delete from events; delete from items; delete from colonization_checks; delete from media_batches; delete from recipes; delete from sterilization_runs; delete from strains; delete from meta;',
+      'delete from outbox; delete from lab_settings; delete from technique_changes; delete from relabels; delete from events; delete from items; delete from colonization_checks; delete from media_batches; delete from recipes; delete from sterilization_runs; delete from strains; delete from meta;',
     );
   });
 }
