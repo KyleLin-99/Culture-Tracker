@@ -3,6 +3,9 @@
 
 export type ItemKind = 'origin' | 'transfer' | 'backup';
 
+/** A member's role in a lab (docs/design/lab-sharing.md). */
+export type Role = 'owner' | 'tech' | 'viewer';
+
 export type Medium =
   | 'spore_print'
   | 'spore_syringe'
@@ -19,7 +22,7 @@ export type ItemStatus = 'active' | 'contaminated' | 'used' | 'archived' | 'disc
 export type Membership = {
   account_id: string;
   user_id: string;
-  role: 'owner' | 'member';
+  role: Role;
   initials: string;
   accounts: { name: string } | null;
 };

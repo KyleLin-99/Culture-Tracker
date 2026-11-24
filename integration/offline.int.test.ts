@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import type { Client } from 'pg';
 
-import { flush, failedChanges } from '@/offline/outbox';
+import { failedChanges, flush } from '@/offline/outbox';
 import { localQueries } from '@/offline/queries';
 import { createRemote } from '@/offline/remote';
 import { createWriteRemote } from '@/offline/remoteWrite';
@@ -13,7 +13,7 @@ import { pull } from '@/offline/sync';
 import { localWriter } from '@/offline/writer';
 
 import { loadTestEnv, type TestEnv } from './env';
-import { adminDb, localToday, must, newLab, newPhone } from './helpers';
+import { adminDb, localToday, must, newLab, newPhone, newUser } from './helpers';
 
 const env = loadTestEnv();
 if (!env && process.env.CI) throw new Error('CI: local Supabase not found (supabase status)');
@@ -262,6 +262,21 @@ suite('offline sync against real Supabase', () => {
     const row = (await admin.query('select code, kind, parent_id, refresh_of from items where id = $1', [ids[0]])).rows[0];
     expect(row).toMatchObject({ kind: 'backup', parent_id: s1, refresh_of: old.id });
     expect((await p.q.activeBackups()).find((b) => b.id === old.id)?.refreshed_by).toMatchObject({ id: ids[0], code: row.code });
+  });
+
+  it('a viewer reads the whole lab, and changes from their phone are refused', async () => {
+    const viewer = await newUser(env as TestEnv, admin);
+    await admin.query("insert into members (account_id, user_id, role, initials) values ($1, $2, 'viewer', 'VI')", [lab.accountId, viewer.id]);
+    const p = await phone({ ...lab, ...viewer });
+    const s1 = await serverId('S-1');
+    expect((await p.q.lookupCode('S-1')).map((r) => r.code)).toContain('S-1');
+
+    await p.writer.addNote(lab.accountId, s1, 'viewer note');
+    await p.sync();
+    expect((await admin.query("select count(*)::int as n from events where note = 'viewer note'")).rows[0].n).toBe(0);
+    const failed = await failedChanges(p.db);
+    expect(failed.map((f) => f.summary)).toEqual(['Note on S-1']);
+    expect(failed[0].error).toMatch(/row-level security/);
   });
 
   it('another lab sees none of this, and its changes into this lab are refused', async () => {
