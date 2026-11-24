@@ -110,9 +110,10 @@ export function standardLab(): FakeLab {
 export function fakeRemote(lab: FakeLab) {
   const calls: { table: TableName; since: string | null; historyFrom: string | null; offset: number }[] = [];
   const remote: RemoteSource = {
-    async changed(table, { since, historyFrom, offset, limit }) {
+    async changed(table, { accountId, since, historyFrom, offset, limit }) {
       calls.push({ table, since, historyFrom, offset });
       return lab[table]
+        .filter((r) => r.account_id === accountId)
         .filter((r) => !since || r.updated_at > since)
         .filter((r) => {
           if (!historyFrom) return true;

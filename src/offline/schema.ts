@@ -4,7 +4,7 @@ import type { SqlDb } from './sql';
 // minus server-only rules: the server stays the source of truth.
 // Bump SCHEMA_VERSION and add a step to MIGRATIONS for any change.
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -101,6 +101,13 @@ const MIGRATIONS: Record<number, string> = {
     alter table items add column refresh_of text;
     create index items_refresh_of_idx on items (refresh_of);
     delete from meta where key = 'pulled_until_items';
+  `,
+  // Phones used to pull every lab the person belongs to. Drop rows from any lab
+  // other than the one this copy is for (outbox entries are this lab's own).
+  7: `
+    ${['lab_settings', 'strains', 'sterilization_runs', 'recipes', 'media_batches', 'items', 'events', 'colonization_checks', 'relabels']
+      .map((t) => `delete from ${t} where account_id <> coalesce((select value from meta where key = 'account_id'), account_id);`)
+      .join('\n    ')}
   `,
 };
 

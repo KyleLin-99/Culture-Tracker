@@ -11,7 +11,7 @@ export interface RemoteSource {
    */
   changed(
     table: TableName,
-    opts: { since: string | null; historyFrom: string | null; offset: number; limit: number },
+    opts: { accountId: string; since: string | null; historyFrom: string | null; offset: number; limit: number },
   ): Promise<RemoteRow[]>;
   /** Specific rows, e.g. the older ancestors of an active culture. */
   byIds(table: TableName, ids: string[]): Promise<RemoteRow[]>;
@@ -89,6 +89,7 @@ export async function pull(
     let newest = pulledUntil;
     for (let offset = 0; ; offset += PAGE_SIZE) {
       const rows = await remote.changed(table, {
+        accountId: opts.accountId,
         since: since(pulledUntil),
         historyFrom: windowed ? opts.historyFrom : null,
         offset,
