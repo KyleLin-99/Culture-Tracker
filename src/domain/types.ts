@@ -185,3 +185,13 @@ export type TraceRow = {
   relative_risk: number;
   p_value: number;
 };
+
+/** A dated change in how the lab works, shown as a marker on the contamination trend. */
+export type TechniqueChange = {
+  id: string;
+  account_id: string;
+  changed_on: string;
+  title: string;
+  note: string | null;
+  created_at: string;
+};

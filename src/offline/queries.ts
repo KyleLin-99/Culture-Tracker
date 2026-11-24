@@ -14,6 +14,7 @@ import type {
   Recipe,
   SterilizationRun,
   Strain,
+  TechniqueChange,
   TreeRow,
 } from '@/domain/types';
 
@@ -283,6 +284,14 @@ export function localQueries(db: SqlDb) {
         batchIds,
       );
       return rows.map(toItem);
+    },
+
+    /** Technique changes, oldest first. */
+    async listTechniqueChanges(): Promise<TechniqueChange[]> {
+      return db.all<TechniqueChange>(
+        `select id, account_id, changed_on, title, note, created_at from technique_changes
+         where deleted_at is null order by changed_on, created_at`,
+      );
     },
 
     /** Every version of every recipe, archived ones included (currentRecipes() picks). */

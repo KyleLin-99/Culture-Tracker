@@ -163,6 +163,8 @@ export type Lab = {
   events: Record<string, unknown>[];
   /** Plates to relabel after an offline code conflict. */
   relabels: Record<string, unknown>[];
+  /** Technique changes (Stats markers), removed ones kept with deleted_at. */
+  techniqueChanges: Record<string, unknown>[];
   /** Every insert the app made: table and request body. */
   inserts: { table: string; body: Record<string, unknown> }[];
   /** Every RPC call the app made: function name and request body. */
@@ -252,6 +254,32 @@ async function mockSupabase(page: Page, lab: Lab) {
     if (path.startsWith('/rest/v1/recipes')) {
       const family = url.searchParams.get('family_id')?.replace(/^eq\./, '');
       return json(lab.recipes.filter((r) => !family || r.family_id === family));
+    }
+    if (path.startsWith('/rest/v1/technique_changes')) {
+      if (req.method() === 'POST') {
+        const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
+        lab.inserts.push({ table: 'technique_changes', body });
+        // Like the "writers insert" policy: viewers are refused.
+        const me = lab.members.find((m) => m.account_id === body.account_id && m.user_id === USER_ID);
+        if (!me || me.role === 'viewer') {
+          return json({ code: '42501', message: 'new row violates row-level security policy for table "technique_changes"' }, 403);
+        }
+        const row = { id: `tc-${lab.techniqueChanges.length + 1}`, note: null, created_at: new Date().toISOString(), deleted_at: null, ...body };
+        lab.techniqueChanges.push(row);
+        return json(single ? row : [], 201);
+      }
+      if (req.method() === 'PATCH') {
+        const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+        const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
+        lab.inserts.push({ table: 'technique_changes:update', body: { id, ...body } });
+        lab.techniqueChanges.filter((c) => c.id === id).forEach((c) => Object.assign(c, body));
+        return json([]);
+      }
+      // Live ones, oldest first (changed_on, then created_at).
+      const rows = inLab(lab.techniqueChanges)
+        .filter((c) => !c.deleted_at)
+        .sort((a, b) => `${a.changed_on} ${a.created_at}`.localeCompare(`${b.changed_on} ${b.created_at}`));
+      return json(rows);
     }
     if (path.startsWith('/rest/v1/relabels')) {
       if (req.method() === 'PATCH') {
@@ -443,7 +471,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

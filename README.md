@@ -115,7 +115,11 @@ database tests locally).
    relative risk and a Fisher's exact p value.
 10. **Stats**: contamination rates over the last 30 days, 90 days or year,
    grouped by recipe, sterilization run, media batch, generation, month or
-   strain, and average growth per strain from your growth checks.
+   strain, and average growth per strain from your growth checks. **Over
+   time** charts contamination per week or month. Log **technique changes**
+   ("Started using a flow hood") and each shows as a numbered line on the chart,
+   with the plates made 30 days before and after compared (Fisher's exact test)
+   so you can see whether the change made a real difference.
 11. **People and labs**: owners invite people from **People** with a one-time
    code (owner, tech or viewer; it works once, for 7 days), change roles and
    remove people. Anyone can join a lab with a code (also offered at first
