@@ -169,6 +169,59 @@ describe('backups due', () => {
   });
 });
 
+// refreshInfo() and activeBackups().refreshed_by answer like api.ts does online:
+// the newest live refresh by created_at, with its live growth checks counted.
+// Its own lab, so these refreshes don't change what the tests above see.
+describe('backup refreshes', () => {
+  let rq: LocalQueries;
+  let closeRefresh: () => void;
+
+  beforeAll(async () => {
+    const db = await openTestDb();
+    closeRefresh = db.close;
+    await migrate(db);
+    const lab = standardLab();
+    const b = builder(lab);
+    const refresh = (createdAt: string, extra: Record<string, unknown> = {}) =>
+      Object.assign(b.backup('S-2A1'), { refresh_of: 'id-S-2A1(1)', created_at: createdAt, updated_at: tick() }, extra);
+    // Pulled (by updated_at) in a different order than they were made: the first
+    // refresh was marked contaminated last, so it's the newest row on the phone.
+    refresh('2026-11-15T09:00:00Z'); // S-2A1(3): the newest live refresh
+    refresh('2026-11-18T09:00:00Z', { deleted_at: '2026-11-19T00:00:00Z' }); // S-2A1(4): newer, but removed
+    refresh('2026-11-10T09:00:00Z', { status: 'contaminated', updated_at: tick() }); // S-2A1(5): the first try
+    const check = (id: string, itemId: string, deletedAt: string | null = null) => ({
+      id, account_id: ACCOUNT, item_id: itemId, checked_on: '2026-11-20', percent: 40, radius_mm: null, note: null,
+      source: 'manual', created_at: tick(), updated_at: tick(), deleted_at: deletedAt,
+    });
+    lab.colonization_checks.push(
+      check('rk-1', 'id-S-2A1(3)'),
+      check('rk-2', 'id-S-2A1(3)'),
+      check('rk-removed', 'id-S-2A1(3)', '2026-11-21T00:00:00Z'),
+      check('rk-old', 'id-S-2A1(5)'),
+    );
+    await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: '2025-11-23' });
+    rq = localQueries(db);
+  });
+  afterAll(() => closeRefresh());
+
+  it('reports the newest live refresh, counting only its live checks', async () => {
+    expect(await rq.refreshInfo('id-S-2A1(1)')).toEqual({
+      refreshOf: null,
+      refreshedBy: { id: 'id-S-2A1(3)', code: 'S-2A1(3)', status: 'active', checks: 2 },
+    });
+  });
+
+  it('marks the backup refreshed by that same culture in the active backups', async () => {
+    const rows = await rq.activeBackups();
+    expect(rows.find((r) => r.code === 'S-2A1(1)')?.refreshed_by).toEqual({ id: 'id-S-2A1(3)', code: 'S-2A1(3)', status: 'active' });
+    expect(rows.find((r) => r.code === 'S-2A1(2)')?.refreshed_by).toBeNull();
+  });
+
+  it('has nothing to report for a culture that is neither refreshed nor a refresh', async () => {
+    expect(await rq.refreshInfo('id-S-2')).toEqual({ refreshOf: null, refreshedBy: null });
+  });
+});
+
 // statsRows() is the phone's stats_rows() (supabase/migrations/*_stats_rows.sql).
 // Its own lab, so these plates don't change what the tests above see.
 describe('statsRows', () => {

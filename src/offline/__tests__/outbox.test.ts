@@ -370,3 +370,89 @@ describe('colonization checks', () => {
     fresh.close();
   });
 });
+
+describe('refreshing a backup', () => {
+  it('makes a new backup from the active parent, offline, and the server keeps the link', async () => {
+    server.state.online = false;
+    const { ids } = await writer.refreshBackup({ backupId: 'id-S-2A1(1)', madeOn: '2026-11-23' });
+    expect(await codes(ids)).toEqual(['S-2A1(3)']);
+    expect((await localQueries(db).refreshInfo('id-S-2A1(1)')).refreshedBy).toMatchObject({ code: 'S-2A1(3)', checks: 0 });
+
+    server.state.online = true;
+    await sync();
+    const row = lab.items.find((i) => i.id === ids[0])!;
+    expect([row.code, row.kind, row.parent_id, row.refresh_of]).toEqual(['S-2A1(3)', 'backup', 'id-S-2A1', 'id-S-2A1(1)']);
+    expect((await localQueries(db).refreshInfo(ids[0])).refreshOf).toEqual({ id: 'id-S-2A1(1)', code: 'S-2A1(1)' });
+  });
+
+  it('grows a culture from the backup when the parent is no longer active', async () => {
+    lab.items.find((i) => i.code === 'S-2A1')!.status = 'used';
+    await sync();
+    const { ids } = await writer.refreshBackup({ backupId: 'id-S-2A1(1)', madeOn: '2026-11-23' });
+    expect(await codes(ids)).toEqual(['S-2A1(1)-1']);
+    await sync();
+    expect(lab.items.find((i) => i.id === ids[0])).toMatchObject({ kind: 'transfer', parent_id: 'id-S-2A1(1)', refresh_of: 'id-S-2A1(1)' });
+  });
+
+  it('hides a refreshed backup from active-backup refresh checks until its refresh fails', async () => {
+    const { ids } = await writer.refreshBackup({ backupId: 'id-S-2A1(1)', madeOn: '2026-11-23' });
+    const refreshed = async () => (await localQueries(db).activeBackups()).find((b) => b.code === 'S-2A1(1)')!.refreshed_by;
+    expect(await refreshed()).toMatchObject({ id: ids[0], status: 'active' });
+    await writer.setItemStatus(ids[0], 'contaminated');
+    expect(await refreshed()).toMatchObject({ status: 'contaminated' });
+  });
+
+  it('refuses to refresh something that is not a backup', async () => {
+    await expect(writer.refreshBackup({ backupId: 'id-S-2', madeOn: '2026-11-23' })).rejects.toThrow('Only a backup can be refreshed');
+  });
+
+  /** Makes the server refuse the items change that creates `id`, as if it broke a rule. */
+  const refuseItem = (id: string) => {
+    const applyItems = server.remote.applyItems;
+    server.remote.applyItems = async (planned) => {
+      if (planned.some((p) => p.id === id)) throw new Error('Strain not found');
+      return applyItems(planned);
+    };
+  };
+
+  // A refresh from the active parent has parent_id = the backup's parent, so only
+  // refresh_of ties it to the backup. If that backup was made offline and refused,
+  // the refresh must fail with it, not be sent pointing at a backup that never existed.
+  it('fails a refresh (from the parent) along with the refused backup it refreshes', async () => {
+    server.state.online = false;
+    const backup = await writer.createBackups({ parentId: 'id-S-2A1', count: 1, medium: 'slant', madeOn: '2026-11-23' });
+    const refresh = await writer.refreshBackup({ backupId: backup.ids[0], madeOn: '2026-11-23' });
+    expect(await codes(refresh.ids)).toEqual(['S-2A1(4)']);
+
+    refuseItem(backup.ids[0]);
+    server.state.online = true;
+    const result = await flush(db, server.remote);
+
+    expect(result).toEqual({ sent: 0, failed: 2, offline: false });
+    expect(await writer.readItems([...backup.ids, ...refresh.ids])).toEqual([]);
+    expect(lab.items.some((i) => i.refresh_of === backup.ids[0])).toBe(false);
+    expect((await failedChanges(db)).map((f) => [f.summary, f.error])).toEqual([
+      ['1 backup of S-2A1: S-2A1(3)', 'Strain not found'],
+      ['Refresh of S-2A1(3): S-2A1(4)', "Depends on a change that couldn't be saved (1 backup of S-2A1: S-2A1(3))"],
+    ]);
+  });
+
+  it('fails a refresh (grown from the backup) along with the refused backup it refreshes', async () => {
+    server.state.online = false;
+    const backup = await writer.createBackups({ parentId: 'id-S-2A1', count: 1, medium: 'slant', madeOn: '2026-11-23' });
+    await writer.setItemStatus('id-S-2A1', 'used');
+    const refresh = await writer.refreshBackup({ backupId: backup.ids[0], madeOn: '2026-11-23' });
+    expect(await codes(refresh.ids)).toEqual(['S-2A1(3)-1']);
+
+    refuseItem(backup.ids[0]);
+    server.state.online = true;
+    const result = await flush(db, server.remote);
+
+    expect(result).toEqual({ sent: 1, failed: 2, offline: false }); // the status change still went through
+    expect(await writer.readItems(refresh.ids)).toEqual([]);
+    expect((await failedChanges(db)).map((f) => f.error)).toEqual([
+      'Strain not found',
+      "Depends on a change that couldn't be saved (1 backup of S-2A1: S-2A1(3))",
+    ]);
+  });
+});

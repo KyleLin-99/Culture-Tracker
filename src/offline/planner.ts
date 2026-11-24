@@ -26,6 +26,8 @@ export type PlannedItem = {
   notes: string | null;
   generation: number;
   expected_code: string;
+  /** Set when this culture refreshes a backup (see refresh_backup()). */
+  refresh_of?: string | null;
 };
 
 type ParentRow = { id: string; account_id: string; strain_id: string; kind: ItemKind; code: string; generation: number };
@@ -61,6 +63,7 @@ const base = (p: Partial<PlannedItem>): Omit<PlannedItem, 'id' | 'expected_code'
   location: null,
   notes: null,
   generation: 0,
+  refresh_of: null,
   ...p,
 });
 

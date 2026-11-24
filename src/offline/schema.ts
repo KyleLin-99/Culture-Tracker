@@ -4,7 +4,7 @@ import type { SqlDb } from './sql';
 // minus server-only rules: the server stays the source of truth.
 // Bump SCHEMA_VERSION and add a step to MIGRATIONS for any change.
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -93,6 +93,14 @@ const MIGRATIONS: Record<number, string> = {
       id text primary key, account_id text not null, backup_refresh_days text not null default '{}',
       created_at text, updated_at text not null, deleted_at text
     );
+  `,
+  // Backup refreshes: the culture that replaces a backup points back at it.
+  // Re-pull items in full: refreshes made on the web before this phone updated
+  // arrived without the column, and an incremental pull would never fetch them again.
+  6: `
+    alter table items add column refresh_of text;
+    create index items_refresh_of_idx on items (refresh_of);
+    delete from meta where key = 'pulled_until_items';
   `,
 };
 

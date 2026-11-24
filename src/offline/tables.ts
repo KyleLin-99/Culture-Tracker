@@ -18,7 +18,7 @@ export const TABLES = {
   items: [
     'id', 'account_id', 'strain_id', 'parent_id', 'kind', 'medium', 'origin_prefix', 'origin_number', 'position',
     'backup_number', 'code', 'generation', 'status', 'location', 'media_batch_id', 'made_on', 'initials', 'notes',
-    'aliases', 'created_at', 'updated_at', 'deleted_at',
+    'aliases', 'refresh_of', 'created_at', 'updated_at', 'deleted_at',
   ],
   events: [
     'id', 'account_id', 'item_id', 'type', 'occurred_at', 'note', 'contam_type', 'photo_key', 'created_at', 'updated_at',

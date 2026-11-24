@@ -251,6 +251,19 @@ suite('offline sync against real Supabase', () => {
     expect(local.some((r) => r.id === kids[2])).toBe(false);
   });
 
+  it('a backup refreshed offline reaches the server linked to the old backup', async () => {
+    // A parent that's still active (earlier tests retire or contaminate some cultures).
+    const s1 = (await admin.query("select id from items where account_id = $1 and kind = 'transfer' and status = 'active' and deleted_at is null order by code limit 1", [lab.accountId])).rows[0].id as string;
+    must(await lab.client.rpc('create_backups', { p_parent_id: s1, p_count: 1, p_medium: 'slant', p_made_on: TODAY }));
+    const p = await phone();
+    const old = (await p.q.activeBackups()).find((b) => b.parent_id === s1)!;
+    const { ids } = await p.writer.refreshBackup({ backupId: old.id, madeOn: TODAY });
+    await p.sync();
+    const row = (await admin.query('select code, kind, parent_id, refresh_of from items where id = $1', [ids[0]])).rows[0];
+    expect(row).toMatchObject({ kind: 'backup', parent_id: s1, refresh_of: old.id });
+    expect((await p.q.activeBackups()).find((b) => b.id === old.id)?.refreshed_by).toMatchObject({ id: ids[0], code: row.code });
+  });
+
   it('another lab sees none of this, and its changes into this lab are refused', async () => {
     const other = await newLab(env as TestEnv, admin, 'Other lab');
     const p = await phone(other);
