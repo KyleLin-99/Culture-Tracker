@@ -127,6 +127,27 @@ export function fakeServer(lab: FakeLab) {
       Object.assign(e, { note: op.note.trim(), updated_at: tick() });
       return { ...e };
     },
+    async applyCheck(c) {
+      // Same rules as apply_check() in supabase/migrations/*_colonization_checks.sql.
+      offline();
+      const existing = lab.colonization_checks.find((x) => x.id === c.id);
+      if (existing) return { ...existing };
+      const item = items().find((i) => i.id === c.item_id && !i.deleted_at);
+      if (!item) throw new Error('Culture not found');
+      if (c.percent === null && c.radius_mm === null) throw new Error('A check needs a percent colonized or a radius');
+      if (c.checked_on < (item.made_on as string)) throw new Error("A check can't be dated before the culture was made");
+      const at = tick();
+      const row: RemoteRow = { ...c, account_id: item.account_id, source: 'manual', created_at: at, updated_at: at, deleted_at: null };
+      lab.colonization_checks.push(row);
+      return { ...row };
+    },
+    async removeCheck(id) {
+      offline();
+      const c = lab.colonization_checks.find((x) => x.id === id);
+      if (!c) throw new Error('Check not found');
+      if (!c.deleted_at) Object.assign(c, { deleted_at: tick(), updated_at: tick() });
+      return { ...c };
+    },
     async resolveRelabel(id, at) {
       offline();
       const r = lab.relabels.find((x) => x.id === id);

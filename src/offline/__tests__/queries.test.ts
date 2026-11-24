@@ -32,6 +32,19 @@ beforeAll(async () => {
     { id: 'e1', account_id: ACCOUNT, item_id: 'id-S-2', type: 'transferred', occurred_at: '2026-11-20T10:00:00Z', note: '2 × agar: S-2A … S-2B', contam_type: null, photo_key: null, created_at: tick(), updated_at: tick(), deleted_at: null },
     { id: 'e2', account_id: ACCOUNT, item_id: 'id-S-2', type: 'note', occurred_at: '2026-11-21T10:00:00Z', note: 'fast', contam_type: null, photo_key: null, created_at: tick(), updated_at: tick(), deleted_at: null },
   );
+  const check = (id: string, itemId: string, checkedOn: string, createdAt: string, deletedAt: string | null = null) => ({
+    id, account_id: ACCOUNT, item_id: itemId, checked_on: checkedOn, percent: 10, radius_mm: null, note: null,
+    source: 'manual', created_at: createdAt, updated_at: tick(), deleted_at: deletedAt,
+  });
+  // Added out of order on purpose; two share a day and differ only by created_at.
+  lab.colonization_checks.push(
+    check('ck-late', 'id-S-2', '2026-11-22', '2026-11-22T08:00:00Z'),
+    check('ck-same-2', 'id-S-2', '2026-11-21', '2026-11-21T18:00:00Z'),
+    check('ck-same-1', 'id-S-2', '2026-11-21', '2026-11-21T09:00:00Z'),
+    check('ck-removed', 'id-S-2', '2026-11-20', '2026-11-20T09:00:00Z', '2026-11-21T00:00:00Z'),
+    check('ck-parent', 'id-S', '2026-11-20', '2026-11-20T10:00:00Z'),
+    check('ck-other', 'id-S-3', '2026-11-19', '2026-11-19T10:00:00Z'),
+  );
   await pull(db, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: '2025-11-23' });
   q = localQueries(db);
 });
@@ -123,5 +136,18 @@ describe('items and lab records', () => {
   it('lists strains', async () => {
     expect((await q.listStrains()).map((s) => s.name)).toEqual(['Blue Oyster']);
     expect((await q.getStrain(STRAIN)).species).toBe('Pleurotus ostreatus');
+  });
+});
+
+describe('itemChecks', () => {
+  // Same filter and order as itemChecks() in src/lib/api.ts: deleted_at is null,
+  // order by checked_on, then created_at.
+  it('leaves out removed checks and orders by checked_on, then created_at', async () => {
+    expect((await q.itemChecks(['id-S-2'])).map((c) => c.id)).toEqual(['ck-same-1', 'ck-same-2', 'ck-late']);
+  });
+
+  it('merges a culture with its ancestors, and only those asked for', async () => {
+    expect((await q.itemChecks(['id-S-2', 'id-S'])).map((c) => c.id)).toEqual(['ck-parent', 'ck-same-1', 'ck-same-2', 'ck-late']);
+    expect(await q.itemChecks([])).toEqual([]);
   });
 });

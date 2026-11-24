@@ -4,6 +4,7 @@
 
 import { normalizeCode } from '@/domain/cultureCode';
 import type {
+  ColonizationCheck,
   Item,
   ItemEvent,
   ItemWithRefs,
@@ -140,6 +141,17 @@ export function localQueries(db: SqlDb) {
         `select id, type, occurred_at, note, contam_type from events
          where item_id = ? and deleted_at is null order by occurred_at desc`,
         [itemId],
+      );
+    },
+
+    /** Checks on these cultures that haven't been removed, oldest first. */
+    async itemChecks(itemIds: string[]): Promise<ColonizationCheck[]> {
+      if (!itemIds.length) return [];
+      return db.all<ColonizationCheck>(
+        `select id, item_id, checked_on, percent, radius_mm, note, source, created_at from colonization_checks
+         where item_id in (${itemIds.map(() => '?').join(', ')}) and deleted_at is null
+         order by checked_on, created_at`,
+        itemIds,
       );
     },
 

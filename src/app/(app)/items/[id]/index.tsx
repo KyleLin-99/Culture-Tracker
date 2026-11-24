@@ -9,6 +9,7 @@ import { addNote, changeNote, createBackups, getItem, itemEvents, itemLineage, s
 import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Button, Card, Choices, ErrorText, Field, LinkText, Muted, Screen, SectionTitle, StatusPill, Stepper, styles } from '@/ui/components';
+import { GrowthSection } from '@/ui/GrowthSection';
 import { colors, font, space } from '@/ui/theme';
 import { TreeList } from '@/ui/TreeList';
 
@@ -213,6 +214,14 @@ export default function ItemDetail() {
           <Field label="Note" value={text} onChangeText={setText} multiline placeholder="Fast, rhizomorphic growth" />
           <Button title="Save note" busy={busy} disabled={!text.trim()} onPress={() => run(() => addNote(account_id, i.id, text))} />
         </Card>
+      )}
+
+      {lineage.data && (
+        <GrowthSection
+          culture={i}
+          ancestors={lineage.data.filter((r) => r.depth < 0).sort((a, b) => a.depth - b.depth)}
+          canLog={active}
+        />
       )}
 
       <SectionTitle>Lineage</SectionTitle>

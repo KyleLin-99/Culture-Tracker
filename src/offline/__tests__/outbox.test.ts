@@ -273,3 +273,100 @@ describe('editing and removing notes', () => {
     expect(await notes('id-S-2')).toEqual([]);
   });
 });
+
+describe('colonization checks', () => {
+  const checks = async (itemId: string) =>
+    (await localQueries(db).itemChecks([itemId])).map((c) => [c.checked_on, c.percent, c.radius_mm]);
+
+  it('logs a check offline and sends it once back online', async () => {
+    server.state.online = false;
+    await writer.logCheck({ itemId: 'id-S-2', checkedOn: '2026-11-20', percent: 40, radiusMm: 18, note: ' fluffy ' });
+    expect(await checks('id-S-2')).toEqual([['2026-11-20', 40, 18]]);
+    await sync();
+    expect(lab.colonization_checks).toHaveLength(0);
+
+    server.state.online = true;
+    await sync();
+    expect(lab.colonization_checks.map((c) => [c.item_id, c.percent, c.note])).toEqual([['id-S-2', 40, 'fluffy']]);
+    expect(await pendingCount(db)).toBe(0);
+  });
+
+  it('logs a check on a culture made offline, sent after the culture', async () => {
+    server.state.online = false;
+    const { ids } = await writer.createTransfers({ parentId: 'id-S-2', count: 1, medium: 'agar', madeOn: '2026-11-23' });
+    await writer.logCheck({ itemId: ids[0], checkedOn: '2026-11-23', percent: 5, radiusMm: null });
+    server.state.online = true;
+    await sync();
+    expect(lab.colonization_checks.map((c) => c.item_id)).toEqual([ids[0]]);
+  });
+
+  it('removes a synced check on the server; drops an unsent one without sending it', async () => {
+    await writer.logCheck({ itemId: 'id-S-2', checkedOn: '2026-11-20', percent: 40, radiusMm: null });
+    await sync();
+    const sent = lab.colonization_checks[0].id;
+    await writer.removeCheck(sent);
+    expect(await checks('id-S-2')).toEqual([]);
+    await sync();
+    expect(lab.colonization_checks[0].deleted_at).toBeTruthy();
+
+    server.state.online = false;
+    const unsent = await writer.logCheck({ itemId: 'id-S-2', checkedOn: '2026-11-21', percent: 50, radiusMm: null });
+    await writer.removeCheck(unsent.id);
+    expect(await pendingCount(db)).toBe(0);
+    server.state.online = true;
+    await sync();
+    expect(lab.colonization_checks).toHaveLength(1);
+  });
+
+  it('refuses checks the server would refuse', async () => {
+    await expect(writer.logCheck({ itemId: 'id-S-2', checkedOn: '2026-11-20', percent: null, radiusMm: null })).rejects.toThrow(
+      'A check needs a percent colonized or a radius',
+    );
+    await expect(writer.logCheck({ itemId: 'id-S-2', checkedOn: '2000-01-01', percent: 5, radiusMm: null })).rejects.toThrow(
+      "A check can't be dated before the culture was made",
+    );
+  });
+
+  it('undoes a check the server refuses, with the reason', async () => {
+    server.state.online = false;
+    await writer.logCheck({ itemId: 'id-S-2', checkedOn: '2026-11-20', percent: 40, radiusMm: null });
+    // Meanwhile the culture was deleted on the server.
+    Object.assign(lab.items.find((i) => i.id === 'id-S-2')!, { deleted_at: '2026-11-21T00:00:00.000Z' });
+    server.state.online = true;
+    await flush(db, server.remote);
+    expect(await checks('id-S-2')).toEqual([]);
+    expect((await failedChanges(db)).map((f) => [f.summary, f.error])).toEqual([['Check on S-2', 'Culture not found']]);
+  });
+
+  it('fails a check along with the refused transfer it was logged on', async () => {
+    server.state.online = false;
+    const { ids } = await writer.createTransfers({ parentId: 'id-S-1', count: 1, medium: 'agar', madeOn: '2026-11-23' });
+    await writer.logCheck({ itemId: ids[0], checkedOn: '2026-11-23', percent: 5, radiusMm: null });
+    await writer.logCheck({ itemId: 'id-S-3', checkedOn: '2026-11-23', percent: 20, radiusMm: null });
+
+    // S-1 was removed on the server in the meantime.
+    lab.items.splice(lab.items.findIndex((i) => i.code === 'S-1'), 1);
+    server.state.online = true;
+    const result = await flush(db, server.remote);
+
+    expect(result).toEqual({ sent: 1, failed: 2, offline: false });
+    expect(await checks(ids[0])).toEqual([]);
+    expect(lab.colonization_checks.map((c) => c.item_id)).toEqual(['id-S-3']); // unrelated check still went through
+    expect((await failedChanges(db)).map((f) => [f.summary, f.error])).toEqual([
+      ['1 transfer from S-1: S-1A', 'Parent item not found'],
+      ['Check on S-1A', "Depends on a change that couldn't be saved (1 transfer from S-1: S-1A)"],
+    ]);
+  });
+
+  it('pulls every check, even on cultures older than the history window', async () => {
+    lab.colonization_checks.push({
+      id: 'old-check', account_id: ACCOUNT, item_id: 'id-S', checked_on: '2026-11-21', percent: 30, radius_mm: null,
+      note: null, source: 'manual', created_at: '2024-01-05T00:00:00Z', updated_at: '2024-01-05T00:00:00Z', deleted_at: null,
+    });
+    const fresh = await openTestDb();
+    await migrate(fresh);
+    await pull(fresh, fakeRemote(lab).remote, { accountId: ACCOUNT, historyFrom: '2025-11-23' });
+    expect((await localQueries(fresh).itemChecks(['id-S'])).map((c) => c.id)).toEqual(['old-check']);
+    fresh.close();
+  });
+});

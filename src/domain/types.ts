@@ -96,6 +96,18 @@ export type ItemEvent = {
   contam_type: string | null;
 };
 
+/** How far a culture had grown on a day: percent of the plate and/or colony radius. */
+export type ColonizationCheck = {
+  id: string;
+  item_id: string;
+  checked_on: string;
+  percent: number | null;
+  radius_mm: number | null;
+  note: string | null;
+  source: 'manual' | 'photo';
+  created_at: string;
+};
+
 export type SterilizationMethod = 'pressure_cooker' | 'autoclave' | 'pasteurize' | 'other';
 
 export type SterilizationRun = {

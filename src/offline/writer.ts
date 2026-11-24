@@ -3,7 +3,7 @@
 
 import type { Item, Medium } from '@/domain/types';
 
-import { dropQueued, enqueue, type LocalEvent, pendingChanges, replaceQueued } from './outbox';
+import { dropQueued, enqueue, type LocalCheck, type LocalEvent, pendingChanges, replaceQueued } from './outbox';
 import { planBackups, planOrigin, planTransfers, type PlannedItem } from './planner';
 import type { SqlDb } from './sql';
 
@@ -188,6 +188,52 @@ export function localWriter(deps: WriterDeps) {
           },
           at,
         );
+      });
+    },
+
+    /** Logs a colonization check. Same rules as apply_check() on the server. */
+    async logCheck(args: { itemId: string; checkedOn: string; percent: number | null; radiusMm: number | null; note?: string }) {
+      const item = await db.first<{ account_id: string; code: string; made_on: string }>(
+        'select account_id, code, made_on from items where id = ? and deleted_at is null',
+        [args.itemId],
+      );
+      if (!item) throw new Error('Culture not found');
+      if (args.percent === null && args.radiusMm === null) throw new Error('A check needs a percent colonized or a radius');
+      if (args.checkedOn < item.made_on) throw new Error("A check can't be dated before the culture was made");
+      const at = deps.now();
+      const check: LocalCheck = {
+        id: deps.newId(), item_id: args.itemId, checked_on: args.checkedOn, percent: args.percent,
+        radius_mm: args.radiusMm, note: args.note?.trim() || null,
+      };
+      await db.transaction(async () => {
+        await db.run(
+          `insert into colonization_checks (id, account_id, item_id, checked_on, percent, radius_mm, note, source, created_at, updated_at, local_pending)
+           values (?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?, 1)`,
+          [check.id, item.account_id, check.item_id, check.checked_on, check.percent, check.radius_mm, check.note, at, at],
+        );
+        await enqueue(db, { op: 'check', summary: `Check on ${item.code}`, check }, at);
+      });
+      return check;
+    },
+
+    /** Removes a check; one still waiting to be sent is simply dropped. */
+    async removeCheck(id: string): Promise<void> {
+      const c = await db.first<{ deleted_at: string | null; code: string | null }>(
+        'select c.deleted_at, i.code from colonization_checks c left join items i on i.id = c.item_id where c.id = ?',
+        [id],
+      );
+      if (!c) throw new Error('Check not found');
+      if (c.deleted_at) return;
+      const at = deps.now();
+      await db.transaction(async () => {
+        const queued = (await pendingChanges(db, 'check')).find((q) => q.change.op === 'check' && q.change.check.id === id);
+        if (queued) {
+          await dropQueued(db, queued.seq);
+          await db.run('delete from colonization_checks where id = ? and local_pending = 1', [id]);
+          return;
+        }
+        await db.run('update colonization_checks set deleted_at = ?, local_pending = 1 where id = ?', [at, id]);
+        await enqueue(db, { op: 'remove_check', summary: `Removed check on ${c.code ?? 'a culture'}`, id, prev_deleted_at: null }, at);
       });
     },
 

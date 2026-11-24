@@ -68,6 +68,24 @@ export function seedRecords() {
   return { runs: [run] as Record<string, unknown>[], batches: [batch] as Record<string, unknown>[] };
 }
 
+/**
+ * Growth checks: TBG and TBG-3 grew about 4 mm/day; TBG-3A only 2 mm/day over two
+ * checks, so it's flagged as losing vigor.
+ */
+export function seedChecks(): Record<string, unknown>[] {
+  const c = (id: string, item_id: string, checked_on: string, radius_mm: number, percent: number | null = null) => ({
+    id, account_id: ACCOUNT_ID, item_id, checked_on, percent, radius_mm, note: null, source: 'manual',
+    created_at: `${checked_on}T12:00:00Z`, deleted_at: null,
+  });
+  return [
+    c('ck-1', 'o-tbg', '2026-11-27', 16),
+    c('ck-2', 'o-tbg', '2026-11-29', 24),
+    c('ck-3', 't-3', '2026-11-27', 17),
+    c('ck-4', 't-3a', '2026-11-27', 8, 20),
+    c('ck-5', 't-3a', '2026-11-29', 12, 30),
+  ];
+}
+
 /** One saved recipe: MEA 2%, version 1, for 500 ml. */
 export function seedRecipes(): Record<string, unknown>[] {
   return [
@@ -101,6 +119,8 @@ export type Lab = {
   items: Row[];
   runs: Record<string, unknown>[];
   batches: Record<string, unknown>[];
+  /** Growth check-ins. */
+  checks: Record<string, unknown>[];
   /** Every saved recipe version. */
   recipes: Record<string, unknown>[];
   /** History entries (notes, transfers…) by item. */
@@ -146,6 +166,10 @@ async function mockSupabase(page: Page, lab: Lab) {
       }
       const itemId = url.searchParams.get('item_id')?.replace(/^eq\./, '');
       return json(lab.events.filter((e) => e.item_id === itemId && !e.deleted_at).reverse());
+    }
+    if (path.startsWith('/rest/v1/colonization_checks')) {
+      const ids = (url.searchParams.get('item_id') ?? '').replace(/^in\.\(|\)$/g, '').split(',');
+      return json(lab.checks.filter((c) => ids.includes(c.item_id as string) && !c.deleted_at));
     }
     if (path.startsWith('/rest/v1/recipes')) {
       const family = url.searchParams.get('family_id')?.replace(/^eq\./, '');
@@ -202,6 +226,20 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
+      if (fn === 'apply_check') {
+        const row = {
+          id: body.p_id, account_id: ACCOUNT_ID, item_id: body.p_item_id, checked_on: body.p_checked_on,
+          percent: body.p_percent, radius_mm: body.p_radius_mm, note: body.p_note, source: 'manual',
+          created_at: new Date().toISOString(), deleted_at: null,
+        };
+        lab.checks.push(row);
+        return json(row);
+      }
+      if (fn === 'remove_check') {
+        const c = lab.checks.find((x) => x.id === body.p_id)!;
+        c.deleted_at = new Date().toISOString();
+        return json(c);
+      }
       if (fn === 'save_recipe') {
         const family = (body.p_family_id as string | null) ?? `fam-${lab.recipes.length + 1}`;
         const version = lab.recipes.filter((r) => r.family_id === family).length + 1;
@@ -256,7 +294,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], inserts: [], rpcCalls: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

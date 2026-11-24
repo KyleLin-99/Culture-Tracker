@@ -4,9 +4,12 @@
 // with no signal. The web, and lab setup (account, batches, runs), talk to
 // Supabase directly.
 
+import * as Crypto from 'expo-crypto';
+
 import { todayLocal } from '@/domain/cultureCode';
 import { currentRecipes } from '@/domain/recipes';
 import type {
+  ColonizationCheck,
   Ingredient,
   Item,
   ItemEvent,
@@ -244,6 +247,63 @@ export async function changeNote(eventId: string, text: string | null): Promise<
   unwrap(
     await supabase.rpc('edit_note', { p_id: eventId, p_note: text?.trim() ?? null, p_delete: text === null }),
   );
+  await afterWrite();
+}
+
+// --- Colonization checks -----------------------------------------------------
+
+/** Checks on these cultures (one culture, or a culture and its ancestors), oldest first. */
+export async function itemChecks(itemIds: string[]): Promise<ColonizationCheck[]> {
+  if (!itemIds.length) return [];
+  const local = await localReader();
+  if (local) return local.itemChecks(itemIds);
+  return unwrap(
+    await supabase
+      .from('colonization_checks')
+      .select('id, item_id, checked_on, percent, radius_mm, note, source, created_at')
+      .in('item_id', itemIds)
+      .is('deleted_at', null)
+      .order('checked_on')
+      .order('created_at'),
+  );
+}
+
+/** Logs how far a culture has grown: percent of the plate and/or radius in mm. */
+export async function logCheck(args: {
+  itemId: string;
+  checkedOn?: string;
+  percent: number | null;
+  radiusMm: number | null;
+  note?: string;
+}): Promise<void> {
+  const checkedOn = args.checkedOn ?? todayLocal();
+  const w = await localWriter();
+  if (w) {
+    await w.logCheck({ ...args, checkedOn });
+    await syncNow();
+    return;
+  }
+  unwrap(
+    await supabase.rpc('apply_check', {
+      p_id: Crypto.randomUUID(),
+      p_item_id: args.itemId,
+      p_checked_on: checkedOn,
+      p_percent: args.percent,
+      p_radius_mm: args.radiusMm,
+      p_note: args.note?.trim() || null,
+    }),
+  );
+  await afterWrite();
+}
+
+export async function removeCheck(id: string): Promise<void> {
+  const w = await localWriter();
+  if (w) {
+    await w.removeCheck(id);
+    await syncNow();
+    return;
+  }
+  unwrap(await supabase.rpc('remove_check', { p_id: id }));
   await afterWrite();
 }
 
