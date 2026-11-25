@@ -55,3 +55,16 @@ Approve someone from the waitlist (until the back office exists):
 ```sql
 update public.waitlist set approved_at = now() where email = 'person@example.com';
 ```
+
+## Back office
+
+Home → **Back office** (shown only to platform admins; `am_i_admin()`). Online only; nothing is kept on the phone.
+
+- **Overview**: people vs cap, labs, waitlist, people per plan.
+- **Settings**: open/close sign-ups, most people, oldest app version allowed, a notice shown to everyone.
+- **Users**: search by email; set plan, give or remove early access. Shows plan, joined, last sign-in and lab *counts*; never lab records.
+- **Waitlist**: approve an email so it can sign up even when full.
+- **Feature flags**: off / early access / everyone. The app reads `my_flags()`.
+- **Audit log**: every change above, with who and when.
+
+Every `admin_*` function is `security definer`, checks `private.is_platform_admin()` first and writes `admin_audit`. Who is an admin is changed only by SQL (see above), never from the app. Limits per plan can be changed with `admin_set_limit(tier, key, value)` (no screen yet).
