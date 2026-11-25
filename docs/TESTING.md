@@ -17,7 +17,7 @@ Six layers. CI runs all of them on every pull request, every push to `main`, and
 
 Every pull request that changes app code (`src/`) or the database (`supabase/migrations/`) must also change tests. The **Tests included** check enforces this. For changes that truly need none (a refactor with no behaviour change, wording, config), add the `no-tests-needed` label and say why in the PR description.
 
-In Claude Code, the `test-writer` agent writes tests for the current branch: ask "use the test-writer agent on this change".
+In Claude Code, the `test-writer` agent writes tests for the current branch: ask "use the test-writer agent on this change". It runs on Sonnet (cheaper and faster), runs only the files it touched while writing, and runs each full suite once at the end, skipping database and integration tests when no SQL or sync code changed (CI covers them). Name the changed files and layers in your ask to save it exploring.
 
 ## Which layer gets the test
 
