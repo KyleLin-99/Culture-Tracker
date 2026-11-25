@@ -1,0 +1,50 @@
+name: Release
+
+# Push a tag like v1.2.0 (after bumping "version" in app.json) to build and ship.
+# Needs the repository secret EXPO_TOKEN; store submission needs the credentials
+# set up once with `eas credentials` / `eas submit`. See docs/RELEASING.md.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Tag matches app.json version
+        run: |
+          v=$(node -p "require('./app.json').expo.version")
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} does not match app.json version v$v"; exit 1; }
+      - run: npm run check
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Build both stores' binaries (production channel)
+        run: eas build --platform all --profile production --non-interactive --no-wait
+
+  release-notes:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: GitHub Release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --draft

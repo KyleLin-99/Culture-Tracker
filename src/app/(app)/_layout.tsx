@@ -62,6 +62,7 @@ export default function AppLayout() {
       <Stack.Screen name="labs" options={{ title: 'Labs' }} />
       <Stack.Screen name="stats" options={{ title: 'Stats' }} />
       <Stack.Screen name="settings" options={{ title: 'Lab settings' }} />
+      <Stack.Screen name="about" options={{ title: 'About' }} />
       <Stack.Screen name="scan" options={{ title: 'Scan label' }} />
       <Stack.Screen name="recipes/index" options={{ title: 'Recipes' }} />
       <Stack.Screen name="recipes/[id]" options={{ title: 'Recipe' }} />
