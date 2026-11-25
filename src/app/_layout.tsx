@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from '@/auth/AuthProvider';
+import { DeletionProvider, useDeletion } from '@/auth/deletion';
 import { AppGate } from '@/ui/AppGate';
 import { Loading } from '@/ui/components';
 import { colors } from '@/ui/theme';
@@ -13,7 +14,9 @@ export default function RootLayout() {
       <AuthProvider>
         <StatusBar style="dark" />
         <AppGate>
-          <RootStack />
+          <DeletionProvider>
+            <RootStack />
+          </DeletionProvider>
         </AppGate>
       </AuthProvider>
     </SafeAreaProvider>
@@ -21,10 +24,12 @@ export default function RootLayout() {
 }
 
 function RootStack() {
-  const { loading, session, membership } = useAuth();
-  if (loading) return <Loading />;
+  const { loading: authLoading, session, membership } = useAuth();
+  const { loading: deletionLoading, purgeAfter } = useDeletion();
+  if (authLoading || deletionLoading) return <Loading />;
 
   const signedIn = !!session;
+  const deleting = signedIn && !!purgeAfter;
   const hasLab = !!membership;
 
   // Each group is reachable only when its guard is true; otherwise Expo Router
@@ -43,10 +48,13 @@ function RootStack() {
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" options={{ title: 'Sign in', headerShown: false }} />
       </Stack.Protected>
-      <Stack.Protected guard={signedIn && !hasLab}>
+      <Stack.Protected guard={deleting}>
+        <Stack.Screen name="deletion-pending" options={{ title: 'Account deletion', headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={signedIn && !deleting && !hasLab}>
         <Stack.Screen name="onboarding" options={{ title: 'Set up your lab' }} />
       </Stack.Protected>
-      <Stack.Protected guard={signedIn && hasLab}>
+      <Stack.Protected guard={signedIn && !deleting && hasLab}>
         <Stack.Screen name="(app)" options={{ headerShown: false }} />
       </Stack.Protected>
     </Stack>

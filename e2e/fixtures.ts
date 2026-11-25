@@ -179,6 +179,10 @@ export type Lab = {
     audit: Record<string, unknown>[];
     flags: Record<string, unknown>[];
     feedback: Record<string, unknown>[];
+    /** When set, the person has asked to delete their account. */
+    deletion: { purge_after: string } | null;
+    /** The person is the only owner of a lab with other people, so deletion is refused. */
+    deletionBlocked: boolean;
   };
   /** Every RPC call the app made: function name and request body. */
   rpcCalls: { fn: string; body: Record<string, unknown> }[];
@@ -205,6 +209,7 @@ async function mockSupabase(page: Page, lab: Lab) {
       return json({});
     }
     if (path.startsWith('/functions/v1/send-feedback')) return json({ ok: true });
+    if (path.startsWith('/rest/v1/deletion_requests')) return json(lab.admin.deletion ? [lab.admin.deletion] : []);
     if (path.startsWith('/rest/v1/feature_flags')) return json(lab.admin.flags);
     if (path.startsWith('/rest/v1/members')) {
       const user = url.searchParams.get('user_id')?.replace(/^eq\./, '');
@@ -365,6 +370,18 @@ async function mockSupabase(page: Page, lab: Lab) {
         const row = { id: `fb-${lab.admin.feedback.length + 1}`, created_at: '2026-11-24T12:00:00Z', email: 'kyle@example.com', kind: body.p_kind, message: body.p_message, diagnostics: body.p_diagnostics, status: 'new', emailed: false };
         lab.admin.feedback.push(row);
         return json(row.id);
+      }
+      if (fn === 'export_lab') return json({ lab: { name: 'Test Lab' }, strains: seedStrains(), cultures: lab.items, history: [] });
+      if (fn === 'request_account_deletion') {
+        if (lab.admin.deletionBlocked) {
+          return json({ message: 'Make someone else an owner of "Test Lab" first, or remove the other people, then try again.', code: 'P0001' }, 400);
+        }
+        lab.admin.deletion = { purge_after: '2026-12-24T00:00:00Z' };
+        return json('2026-12-24T00:00:00Z');
+      }
+      if (fn === 'cancel_account_deletion') {
+        lab.admin.deletion = null;
+        return json(null);
       }
       if (fn === 'am_i_admin') return json(lab.admin.isAdmin);
       if (fn.startsWith('admin_') && !lab.admin.isAdmin) return json({ message: "Only the app's administrators can do this", code: '42501' }, 403);
@@ -545,7 +562,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [], status: { open: true, min_app_version: '0.0.0', message: '' }, waitlist: [], admin: { isAdmin: false, users: [], waitlist: [], audit: [], flags: [], feedback: [] } });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [], status: { open: true, min_app_version: '0.0.0', message: '' }, waitlist: [], admin: { isAdmin: false, users: [], waitlist: [], audit: [], flags: [], feedback: [], deletion: null, deletionBlocked: false } });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

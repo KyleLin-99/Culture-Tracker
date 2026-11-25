@@ -63,6 +63,7 @@ export default function AppLayout() {
       <Stack.Screen name="stats" options={{ title: 'Stats' }} />
       <Stack.Screen name="settings" options={{ title: 'Lab settings' }} />
       <Stack.Screen name="about" options={{ title: 'About' }} />
+      <Stack.Screen name="account" options={{ title: 'Your account' }} />
       <Stack.Screen name="admin/index" options={{ title: 'Back office' }} />
       <Stack.Screen name="admin/users" options={{ title: 'Users' }} />
       <Stack.Screen name="admin/waitlist" options={{ title: 'Waitlist' }} />
