@@ -171,6 +171,14 @@ export type Lab = {
   status: { open: boolean; min_app_version: string; message: string };
   /** Emails that asked for a place on the waitlist. */
   waitlist: string[];
+  /** Back office: whether the signed-in person is an admin, and what it lists. */
+  admin: {
+    isAdmin: boolean;
+    users: Record<string, unknown>[];
+    waitlist: Record<string, unknown>[];
+    audit: Record<string, unknown>[];
+    flags: Record<string, unknown>[];
+  };
   /** Every RPC call the app made: function name and request body. */
   rpcCalls: { fn: string; body: Record<string, unknown> }[];
 };
@@ -195,6 +203,7 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (!lab.status.open) return json({ code: 'unexpected_failure', error_code: 'unexpected_failure', msg: 'Database error saving new user' }, 500);
       return json({});
     }
+    if (path.startsWith('/rest/v1/feature_flags')) return json(lab.admin.flags);
     if (path.startsWith('/rest/v1/members')) {
       const user = url.searchParams.get('user_id')?.replace(/^eq\./, '');
       const account = url.searchParams.get('account_id')?.replace(/^eq\./, '');
@@ -350,6 +359,46 @@ async function mockSupabase(page: Page, lab: Lab) {
         lab.waitlist.push(String(body.p_email).trim().toLowerCase());
         return json(null);
       }
+      if (fn === 'am_i_admin') return json(lab.admin.isAdmin);
+      if (fn.startsWith('admin_') && !lab.admin.isAdmin) return json({ message: "Only the app's administrators can do this", code: '42501' }, 403);
+      if (fn === 'admin_overview') {
+        return json({
+          users: lab.admin.users.length, max_users: 25, signups_open: lab.status.open, min_app_version: lab.status.min_app_version,
+          message: lab.status.message, labs: 2, waitlist_pending: lab.admin.waitlist.filter((w) => !w.approved_at).length,
+          by_tier: { standard: lab.admin.users.length },
+        });
+      }
+      if (fn === 'admin_list_users') {
+        const q = String(body.p_search ?? '').toLowerCase();
+        return json(lab.admin.users.filter((u) => String(u.email).includes(q)));
+      }
+      if (fn === 'admin_set_tier') {
+        lab.admin.users.filter((u) => u.user_id === body.p_user_id).forEach((u) => (u.tier = body.p_tier));
+        lab.admin.audit.unshift({ id: lab.admin.audit.length + 1, created_at: '2026-11-24T12:00:00Z', admin_email: 'kyle@example.com', action: 'set_tier', target_email: 'friend@example.com', detail: { to: body.p_tier } });
+        return json(null);
+      }
+      if (fn === 'admin_set_early_access') {
+        lab.admin.users.filter((u) => u.user_id === body.p_user_id).forEach((u) => (u.early_access = body.p_on));
+        return json(null);
+      }
+      if (fn === 'admin_list_waitlist') return json(lab.admin.waitlist);
+      if (fn === 'admin_approve_waitlist') {
+        lab.admin.waitlist.filter((w) => w.id === body.p_id).forEach((w) => (w.approved_at = '2026-11-24T12:00:00Z'));
+        return json(null);
+      }
+      if (fn === 'admin_set_setting') {
+        if (body.p_key === 'signups_open') lab.status.open = Boolean(body.p_value);
+        if (body.p_key === 'min_app_version') lab.status.min_app_version = String(body.p_value);
+        if (body.p_key === 'maintenance_message') lab.status.message = String(body.p_value);
+        return json(null);
+      }
+      if (fn === 'admin_audit_log') return json(lab.admin.audit);
+      if (fn === 'admin_set_flag') {
+        const f = lab.admin.flags.find((x) => x.key === body.p_key);
+        if (f) Object.assign(f, { enabled: body.p_enabled, early_access_only: body.p_early_access_only });
+        else lab.admin.flags.push({ key: body.p_key, enabled: body.p_enabled, early_access_only: body.p_early_access_only, description: '' });
+        return json(null);
+      }
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
@@ -484,7 +533,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [], status: { open: true, min_app_version: '0.0.0', message: '' }, waitlist: [] });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [], status: { open: true, min_app_version: '0.0.0', message: '' }, waitlist: [], admin: { isAdmin: false, users: [], waitlist: [], audit: [], flags: [] } });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

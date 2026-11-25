@@ -5,7 +5,7 @@ import { Text, TextInput, View } from 'react-native';
 import { useAuth, useMembership } from '@/auth/AuthProvider';
 import { normalizeCode } from '@/domain/cultureCode';
 import type { LookupRow } from '@/domain/types';
-import { lookupCode, recentItems } from '@/lib/api';
+import { amIAdmin, lookupCode, recentItems } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Button, ErrorText, Muted, Screen, SectionTitle, styles } from '@/ui/components';
@@ -20,6 +20,7 @@ import { colors, font, space, TAP } from '@/ui/theme';
 export default function Home() {
   const membership = useMembership();
   const { signOut, memberships } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LookupRow[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -27,6 +28,11 @@ export default function Home() {
 
   // Search as you type, after a short pause.
   const q = normalizeCode(query);
+
+  // The back-office entry shows only for administrators; offline, it simply stays hidden.
+  useEffect(() => {
+    amIAdmin().then(setIsAdmin).catch(() => setIsAdmin(false));
+  }, []);
 
   useEffect(() => {
     if (!q) return;
@@ -139,6 +145,7 @@ export default function Home() {
         {membership.role === 'owner' && (
           <Button title="Lab settings" variant="secondary" onPress={() => router.push('/settings')} />
         )}
+        {isAdmin && <Button title="Back office" variant="secondary" onPress={() => router.push('/admin')} />}
         <Button title="About" variant="secondary" onPress={() => router.push('/about')} />
         <Button title="Sign out" variant="secondary" onPress={signOut} />
       </View>

@@ -79,6 +79,68 @@ export async function joinWaitlist(email: string): Promise<void> {
   unwrap(await supabase.rpc('join_waitlist', { p_email: email }));
 }
 
+// --- Back office (platform admins only; online only, nothing is kept on the phone) ---
+
+export type Tier = 'standard' | 'paid1' | 'paid2' | 'special';
+export type AdminOverview = {
+  users: number;
+  max_users: number;
+  signups_open: boolean;
+  min_app_version: string;
+  message: string;
+  labs: number;
+  waitlist_pending: number;
+  by_tier: Partial<Record<Tier, number>>;
+};
+export type AdminUser = {
+  user_id: string;
+  email: string;
+  tier: Tier;
+  early_access: boolean;
+  is_admin: boolean;
+  created_at: string;
+  last_sign_in_at: string | null;
+  labs_owned: number;
+  labs_joined: number;
+};
+export type WaitlistEntry = { id: string; email: string; created_at: string; approved_at: string | null };
+export type AuditEntry = { id: number; created_at: string; admin_email: string | null; action: string; target_email: string | null; detail: Record<string, unknown> };
+export type FeatureFlag = { key: string; enabled: boolean; early_access_only: boolean; description: string };
+
+export async function amIAdmin(): Promise<boolean> {
+  return unwrap<boolean>(await supabase.rpc('am_i_admin'));
+}
+export async function adminOverview(): Promise<AdminOverview> {
+  return unwrap<AdminOverview>(await supabase.rpc('admin_overview'));
+}
+export async function adminListUsers(search = ''): Promise<AdminUser[]> {
+  return unwrap<AdminUser[]>(await supabase.rpc('admin_list_users', { p_search: search }));
+}
+export async function adminSetTier(userId: string, tier: Tier): Promise<void> {
+  unwrap(await supabase.rpc('admin_set_tier', { p_user_id: userId, p_tier: tier }));
+}
+export async function adminSetEarlyAccess(userId: string, on: boolean): Promise<void> {
+  unwrap(await supabase.rpc('admin_set_early_access', { p_user_id: userId, p_on: on }));
+}
+export async function adminListWaitlist(): Promise<WaitlistEntry[]> {
+  return unwrap<WaitlistEntry[]>(await supabase.rpc('admin_list_waitlist'));
+}
+export async function adminApproveWaitlist(id: string): Promise<void> {
+  unwrap(await supabase.rpc('admin_approve_waitlist', { p_id: id }));
+}
+export async function adminSetSetting(key: 'max_users' | 'signups_open' | 'min_app_version' | 'maintenance_message', value: number | boolean | string): Promise<void> {
+  unwrap(await supabase.rpc('admin_set_setting', { p_key: key, p_value: value }));
+}
+export async function adminAuditLog(limit = 100): Promise<AuditEntry[]> {
+  return unwrap<AuditEntry[]>(await supabase.rpc('admin_audit_log', { p_limit: limit }));
+}
+export async function listFlags(): Promise<FeatureFlag[]> {
+  return unwrap<FeatureFlag[]>(await supabase.from('feature_flags').select('*').order('key'));
+}
+export async function adminSetFlag(key: string, enabled: boolean, earlyAccessOnly: boolean): Promise<void> {
+  unwrap(await supabase.rpc('admin_set_flag', { p_key: key, p_enabled: enabled, p_early_access_only: earlyAccessOnly }));
+}
+
 // --- Accounts -------------------------------------------------------------
 
 export async function createAccount(name: string, initials: string): Promise<string> {
