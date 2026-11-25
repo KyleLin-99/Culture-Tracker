@@ -139,6 +139,7 @@ export default function Home() {
         {membership.role === 'owner' && (
           <Button title="Lab settings" variant="secondary" onPress={() => router.push('/settings')} />
         )}
+        <Button title="About" variant="secondary" onPress={() => router.push('/about')} />
         <Button title="Sign out" variant="secondary" onPress={signOut} />
       </View>
     </Screen>
