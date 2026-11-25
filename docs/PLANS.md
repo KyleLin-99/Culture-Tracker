@@ -68,3 +68,16 @@ Home → **Back office** (shown only to platform admins; `am_i_admin()`). Online
 - **Audit log**: every change above, with who and when.
 
 Every `admin_*` function is `security definer`, checks `private.is_platform_admin()` first and writes `admin_audit`. Who is an admin is changed only by SQL (see above), never from the app. Limits per plan can be changed with `admin_set_limit(tier, key, value)` (no screen yet).
+
+## Feedback
+
+Home → **Send feedback** (bug / idea / question, optional app version and device type; never lab records). `send_feedback()` saves it first, so nothing is lost, and enforces `feedback_per_day` (Standard 5, Paid 1 10, Paid 2 20, Special 50). The app then asks the `send-feedback` Edge Function to email it; the back-office **Feedback inbox** shows everything, including anything that was not emailed.
+
+Your address is kept only in the function's secrets, never in the app or the database. One-time setup (needs a Resend account and a verified sending domain):
+
+```bash
+npx supabase secrets set RESEND_API_KEY=re_... FEEDBACK_TO=you@example.com FEEDBACK_FROM="Culture Tracker <feedback@yourdomain.com>"
+npx supabase functions deploy send-feedback
+```
+
+Until that is done the function answers "Email is not set up yet" and feedback still lands in the inbox.

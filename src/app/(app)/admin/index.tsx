@@ -49,6 +49,7 @@ export default function Admin() {
       <View style={{ gap: space.sm }}>
         <Button title="Users" variant="secondary" onPress={() => router.push('/admin/users')} />
         <Button title="Waitlist" variant="secondary" onPress={() => router.push('/admin/waitlist')} />
+        <Button title="Feedback inbox" variant="secondary" onPress={() => router.push('/admin/feedback')} />
         <Button title="Audit log" variant="secondary" onPress={() => router.push('/admin/audit')} />
       </View>
 

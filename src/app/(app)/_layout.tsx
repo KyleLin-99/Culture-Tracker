@@ -67,6 +67,8 @@ export default function AppLayout() {
       <Stack.Screen name="admin/users" options={{ title: 'Users' }} />
       <Stack.Screen name="admin/waitlist" options={{ title: 'Waitlist' }} />
       <Stack.Screen name="admin/audit" options={{ title: 'Audit log' }} />
+      <Stack.Screen name="admin/feedback" options={{ title: 'Feedback inbox' }} />
+      <Stack.Screen name="feedback" options={{ title: 'Send feedback' }} />
       <Stack.Screen name="scan" options={{ title: 'Scan label' }} />
       <Stack.Screen name="recipes/index" options={{ title: 'Recipes' }} />
       <Stack.Screen name="recipes/[id]" options={{ title: 'Recipe' }} />
