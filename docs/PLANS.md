@@ -81,3 +81,15 @@ npx supabase functions deploy send-feedback
 ```
 
 Until that is done the function answers "Email is not set up yet" and feedback still lands in the inbox.
+
+## Your account: export and deletion
+
+Home → **Your account**.
+
+- **Export**: the whole lab (including removed items) as JSON, or the cultures as a CSV (`export_lab()`; emails are never included, members appear by initials). On the web it downloads; on a phone it opens the share sheet.
+- **Delete my account** (`request_account_deletion()`), a documented exception to "never hard-delete":
+  - Labs shared with others: you leave at once; your records stay with your initials.
+  - Only owner of a lab with other people: refused until someone else is made an owner (or the others are removed).
+  - Labs only you use: kept for **30 days** (you can cancel on the next sign-in), then deleted with the account.
+  - During the grace period the app shows only "Keep my account / Sign out".
+- The purge (`private.purge_due_accounts()`) runs daily at 04:17 UTC through pg_cron where available; otherwise run **Back office → admin_purge_due_accounts()** (callable by admins) by hand. A lab that gained members during the grace period passes to its longest-standing member instead of being deleted.

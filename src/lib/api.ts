@@ -174,6 +174,23 @@ export async function adminSetFeedbackStatus(id: string, status: 'new' | 'done')
   unwrap(await supabase.rpc('admin_set_feedback_status', { p_id: id, p_status: status }));
 }
 
+// --- Your account: export and deletion -----------------------------------------
+
+export async function exportLab(accountId: string): Promise<Record<string, unknown>> {
+  return unwrap<Record<string, unknown>>(await supabase.rpc('export_lab', { p_account_id: accountId }));
+}
+/** When the account will be deleted, if a deletion has been asked for. */
+export async function myDeletionRequest(): Promise<{ purge_after: string } | null> {
+  const rows = unwrap<{ purge_after: string }[]>(await supabase.from('deletion_requests').select('purge_after').limit(1));
+  return rows[0] ?? null;
+}
+export async function requestAccountDeletion(): Promise<string> {
+  return unwrap<string>(await supabase.rpc('request_account_deletion'));
+}
+export async function cancelAccountDeletion(): Promise<void> {
+  unwrap(await supabase.rpc('cancel_account_deletion'));
+}
+
 // --- Accounts -------------------------------------------------------------
 
 export async function createAccount(name: string, initials: string): Promise<string> {
