@@ -67,6 +67,18 @@ function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
   return data as T;
 }
 
+// --- Sign-up status and waitlist (callable signed out) ----------------------
+
+export type SignupStatus = { open: boolean; min_app_version: string; message: string };
+
+export async function signupStatus(): Promise<SignupStatus> {
+  return unwrap<SignupStatus>(await supabase.rpc('signup_status'));
+}
+
+export async function joinWaitlist(email: string): Promise<void> {
+  unwrap(await supabase.rpc('join_waitlist', { p_email: email }));
+}
+
 // --- Accounts -------------------------------------------------------------
 
 export async function createAccount(name: string, initials: string): Promise<string> {

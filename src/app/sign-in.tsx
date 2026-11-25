@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { joinWaitlist, signupStatus } from '@/lib/api';
 import { errorMessage, supabase } from '@/lib/supabase';
 import { Button, ErrorText, Field, Muted, Screen, styles } from '@/ui/components';
 import { colors, font, space } from '@/ui/theme';
@@ -13,6 +14,9 @@ export default function SignIn() {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when a new person is turned away because the app is full.
+  const [full, setFull] = useState(false);
+  const [onList, setOnList] = useState(false);
 
   async function sendCode() {
     const address = email.trim().toLowerCase();
@@ -27,8 +31,33 @@ export default function SignIn() {
       options: { shouldCreateUser: true },
     });
     setBusy(false);
-    if (err) setError(errorMessage(err));
-    else setSentTo(address);
+    if (err) {
+      // New sign-ups are refused by the database when the app is full; GoTrue
+      // reports that as a generic "Database error saving new user".
+      if (/database error saving new user/i.test(err.message) && (await isFull())) setFull(true);
+      else setError(errorMessage(err));
+    } else setSentTo(address);
+  }
+
+  async function isFull() {
+    try {
+      return !(await signupStatus()).open;
+    } catch {
+      return false;
+    }
+  }
+
+  async function askForPlace() {
+    setBusy(true);
+    setError(null);
+    try {
+      await joinWaitlist(email.trim());
+      setOnList(true);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function verify() {
@@ -48,7 +77,21 @@ export default function SignIn() {
         <Text style={{ fontSize: font.body, color: colors.muted }}>Lineage records for your lab.</Text>
       </View>
 
-      {!sentTo ? (
+      {full ? (
+        <>
+          <Text style={styles.body} testID="app-full">We&apos;re full right now.</Text>
+          <Muted>
+            Culture Tracker is in a small early run. Join the waitlist and we&apos;ll email {email.trim()} when a place opens.
+          </Muted>
+          <ErrorText>{error}</ErrorText>
+          {onList ? (
+            <Text style={styles.body} testID="on-waitlist">You&apos;re on the waitlist. Thank you!</Text>
+          ) : (
+            <Button title="Join the waitlist" onPress={askForPlace} busy={busy} />
+          )}
+          <Button title="Back" variant="secondary" onPress={() => { setFull(false); setOnList(false); setError(null); }} />
+        </>
+      ) : !sentTo ? (
         <>
           <Field
             label="Email"

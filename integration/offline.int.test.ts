@@ -476,6 +476,8 @@ suite('offline sync against real Supabase', () => {
   // switching. RLS allows every lab you belong to; the pull must name the lab.
   // Kept last: it gives this file's user a second lab.
   it('someone in two labs gets only the lab being synced on their phone', async () => {
+    // Owning two labs needs a plan above standard.
+    await admin.query("update profiles set tier = 'paid1' where user_id = (select user_id from members where account_id = $1 and role = 'owner')", [lab.accountId]);
     const labB = must(await lab.client.rpc('create_account', { p_name: 'Second lab', p_initials: 'KL' })) as string;
     const strainB = crypto.randomUUID();
     must(await lab.client.from('strains').insert({ id: strainB, account_id: labB, name: 'Second Lab Reishi' }));
