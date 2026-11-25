@@ -146,6 +146,7 @@ export default function Home() {
           <Button title="Lab settings" variant="secondary" onPress={() => router.push('/settings')} />
         )}
         {isAdmin && <Button title="Back office" variant="secondary" onPress={() => router.push('/admin')} />}
+        <Button title="Send feedback" variant="secondary" onPress={() => router.push('/feedback')} />
         <Button title="About" variant="secondary" onPress={() => router.push('/about')} />
         <Button title="Sign out" variant="secondary" onPress={signOut} />
       </View>

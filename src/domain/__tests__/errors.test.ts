@@ -20,6 +20,7 @@ describe('friendlyError', () => {
     expect(friendlyError('limit_reached:strains:25', 'LM001')).toBe(
       "You've reached your plan's limit for strains (25). Remove one you no longer need, or ask the app's owner about a bigger plan.",
     );
+    expect(friendlyError('limit_reached:feedback_per_day:5', 'LM001')).toContain('feedback messages a day (5)');
     expect(friendlyError('limit_reached:labs_owned:1', 'LM001')).toContain('limit for labs you own (1)');
   });
 });

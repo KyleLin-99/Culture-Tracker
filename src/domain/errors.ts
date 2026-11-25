@@ -13,6 +13,7 @@ const LIMIT_LABEL: Record<string, string> = {
   recipes: 'recipes',
   active_share_links: 'active share links',
   pending_invites: 'pending invites',
+  feedback_per_day: 'feedback messages a day',
 };
 
 /** "limit_reached:strains:25" from the database, as a sentence. */

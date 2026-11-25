@@ -178,6 +178,7 @@ export type Lab = {
     waitlist: Record<string, unknown>[];
     audit: Record<string, unknown>[];
     flags: Record<string, unknown>[];
+    feedback: Record<string, unknown>[];
   };
   /** Every RPC call the app made: function name and request body. */
   rpcCalls: { fn: string; body: Record<string, unknown> }[];
@@ -203,6 +204,7 @@ async function mockSupabase(page: Page, lab: Lab) {
       if (!lab.status.open) return json({ code: 'unexpected_failure', error_code: 'unexpected_failure', msg: 'Database error saving new user' }, 500);
       return json({});
     }
+    if (path.startsWith('/functions/v1/send-feedback')) return json({ ok: true });
     if (path.startsWith('/rest/v1/feature_flags')) return json(lab.admin.flags);
     if (path.startsWith('/rest/v1/members')) {
       const user = url.searchParams.get('user_id')?.replace(/^eq\./, '');
@@ -359,6 +361,11 @@ async function mockSupabase(page: Page, lab: Lab) {
         lab.waitlist.push(String(body.p_email).trim().toLowerCase());
         return json(null);
       }
+      if (fn === 'send_feedback') {
+        const row = { id: `fb-${lab.admin.feedback.length + 1}`, created_at: '2026-11-24T12:00:00Z', email: 'kyle@example.com', kind: body.p_kind, message: body.p_message, diagnostics: body.p_diagnostics, status: 'new', emailed: false };
+        lab.admin.feedback.push(row);
+        return json(row.id);
+      }
       if (fn === 'am_i_admin') return json(lab.admin.isAdmin);
       if (fn.startsWith('admin_') && !lab.admin.isAdmin) return json({ message: "Only the app's administrators can do this", code: '42501' }, 403);
       if (fn === 'admin_overview') {
@@ -390,6 +397,11 @@ async function mockSupabase(page: Page, lab: Lab) {
         if (body.p_key === 'signups_open') lab.status.open = Boolean(body.p_value);
         if (body.p_key === 'min_app_version') lab.status.min_app_version = String(body.p_value);
         if (body.p_key === 'maintenance_message') lab.status.message = String(body.p_value);
+        return json(null);
+      }
+      if (fn === 'admin_list_feedback') return json(lab.admin.feedback);
+      if (fn === 'admin_set_feedback_status') {
+        lab.admin.feedback.filter((f) => f.id === body.p_id).forEach((f) => (f.status = body.p_status));
         return json(null);
       }
       if (fn === 'admin_audit_log') return json(lab.admin.audit);
@@ -533,7 +545,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [], status: { open: true, min_app_version: '0.0.0', message: '' }, waitlist: [], admin: { isAdmin: false, users: [], waitlist: [], audit: [], flags: [] } });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [], status: { open: true, min_app_version: '0.0.0', message: '' }, waitlist: [], admin: { isAdmin: false, users: [], waitlist: [], audit: [], flags: [], feedback: [] } });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

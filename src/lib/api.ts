@@ -141,6 +141,39 @@ export async function adminSetFlag(key: string, enabled: boolean, earlyAccessOnl
   unwrap(await supabase.rpc('admin_set_flag', { p_key: key, p_enabled: enabled, p_early_access_only: earlyAccessOnly }));
 }
 
+// --- Feedback ---------------------------------------------------------------
+
+export type FeedbackKind = 'bug' | 'idea' | 'question';
+export type FeedbackRow = {
+  id: string;
+  created_at: string;
+  email: string | null;
+  kind: FeedbackKind;
+  message: string;
+  diagnostics: Record<string, string>;
+  status: 'new' | 'done';
+  emailed: boolean;
+};
+
+/**
+ * Saves the message (so it is never lost, and shows in the back-office inbox),
+ * then asks the email function to forward it. The email is best effort.
+ */
+export async function sendFeedback(kind: FeedbackKind, message: string, diagnostics: Record<string, string>): Promise<void> {
+  const id = unwrap<string>(await supabase.rpc('send_feedback', { p_kind: kind, p_message: message, p_diagnostics: diagnostics }));
+  try {
+    await supabase.functions.invoke('send-feedback', { body: { id } });
+  } catch {
+    // saved either way; the inbox has it
+  }
+}
+export async function adminListFeedback(status: 'new' | 'done' | null = null): Promise<FeedbackRow[]> {
+  return unwrap<FeedbackRow[]>(await supabase.rpc('admin_list_feedback', { p_status: status }));
+}
+export async function adminSetFeedbackStatus(id: string, status: 'new' | 'done'): Promise<void> {
+  unwrap(await supabase.rpc('admin_set_feedback_status', { p_id: id, p_status: status }));
+}
+
 // --- Accounts -------------------------------------------------------------
 
 export async function createAccount(name: string, initials: string): Promise<string> {

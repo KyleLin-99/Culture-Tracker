@@ -29,7 +29,7 @@ set local role authenticated;
 select tests.sign_in('00000000-0000-0000-0000-00000000000a');
 select is((select count(*)::int from public.profiles), 1, 'a person sees only their own profile');
 select throws_ok($$ update public.profiles set tier = 'special' where user_id = auth.uid() $$, '42501', null, 'nobody changes their own plan');
-select is((select count(*)::int from public.plan_limits), 36, 'signed-in users can read the limits');
+select is((select count(*)::int from public.plan_limits), 40, 'signed-in users can read the limits');
 select throws_ok($$ select * from public.app_settings $$, '42501', null, 'settings are not readable directly');
 select throws_ok($$ select * from public.waitlist $$, '42501', null, 'the waitlist is not readable');
 select throws_ok($$ select * from public.platform_admins $$, '42501', null, 'admins are not listed');
