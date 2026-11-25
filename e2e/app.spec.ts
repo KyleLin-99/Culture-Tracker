@@ -11,7 +11,8 @@ test('sign-in asks for the emailed code', async ({ page, lab }) => {
   await page.getByPlaceholder('you@example.com').fill('kyle@example.com');
   await page.getByRole('button', { name: 'Email me a code' }).click();
   await expect(page.getByText('We sent a sign-in code to kyle@example.com.')).toBeVisible();
-  expect(lab.rpcCalls).toHaveLength(0);
+  // Only the signed-out status check; nothing about a lab.
+  expect(lab.rpcCalls.filter((c) => c.fn !== 'signup_status')).toHaveLength(0);
 });
 
 test('home lists recent cultures and finds one by code', async ({ signedIn: page }) => {

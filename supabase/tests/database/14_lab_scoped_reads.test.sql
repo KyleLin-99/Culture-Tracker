@@ -12,6 +12,8 @@ select plan(13);
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'two-labs@example.com'),
   ('00000000-0000-0000-0000-00000000000c', 'other@example.com');
+-- Owning two labs needs a plan above standard.
+update public.profiles set tier = 'paid1' where user_id = '00000000-0000-0000-0000-00000000000a';
 
 create schema tests;
 grant usage on schema tests to authenticated;

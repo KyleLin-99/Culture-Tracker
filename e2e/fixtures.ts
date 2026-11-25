@@ -167,6 +167,10 @@ export type Lab = {
   techniqueChanges: Record<string, unknown>[];
   /** Every insert the app made: table and request body. */
   inserts: { table: string; body: Record<string, unknown> }[];
+  /** What signup_status() answers: open to new sign-ups or full, and the minimum app version. */
+  status: { open: boolean; min_app_version: string; message: string };
+  /** Emails that asked for a place on the waitlist. */
+  waitlist: string[];
   /** Every RPC call the app made: function name and request body. */
   rpcCalls: { fn: string; body: Record<string, unknown> }[];
 };
@@ -186,7 +190,11 @@ async function mockSupabase(page: Page, lab: Lab) {
       rows.filter((r) => !accountFilter || r.account_id === accountFilter);
 
     if (path.startsWith('/auth/v1/user')) return json(session().user);
-    if (path.startsWith('/auth/v1/otp')) return json({});
+    if (path.startsWith('/auth/v1/otp')) {
+      // A full app refuses new users in a trigger; GoTrue reports it like this.
+      if (!lab.status.open) return json({ code: 'unexpected_failure', error_code: 'unexpected_failure', msg: 'Database error saving new user' }, 500);
+      return json({});
+    }
     if (path.startsWith('/rest/v1/members')) {
       const user = url.searchParams.get('user_id')?.replace(/^eq\./, '');
       const account = url.searchParams.get('account_id')?.replace(/^eq\./, '');
@@ -337,6 +345,11 @@ async function mockSupabase(page: Page, lab: Lab) {
       const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
       lab.rpcCalls.push({ fn, body });
 
+      if (fn === 'signup_status') return json(lab.status);
+      if (fn === 'join_waitlist') {
+        lab.waitlist.push(String(body.p_email).trim().toLowerCase());
+        return json(null);
+      }
       if (fn === 'item_lineage') return json(lineage(lab.items, String(body.p_item_id)));
       if (fn === 'strain_tree') return json(lineage(lab.items, 'o-tbg'));
       if (fn === 'contamination_trace') return json(TRACE_ROWS);
@@ -471,7 +484,7 @@ async function mockSupabase(page: Page, lab: Lab) {
  */
 export const test = base.extend<{ lab: Lab; signedIn: Page }>({
   lab: async ({}, use) => {
-    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [] });
+    await use({ items: seedItems(), ...seedRecords(), statsRows: [], members: seedMembers(), strains: seedStrains(), invites: [], shareLinks: [], settings: null, checks: seedChecks(), recipes: seedRecipes(), events: seedEvents(), relabels: [], techniqueChanges: [], inserts: [], rpcCalls: [], status: { open: true, min_app_version: '0.0.0', message: '' }, waitlist: [] });
   },
   page: async ({ page, lab }, use) => {
     await mockSupabase(page, lab);

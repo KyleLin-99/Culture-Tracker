@@ -15,4 +15,11 @@ describe('friendlyError', () => {
     expect(friendlyError("Only the lab's owners can change lab settings", '42501')).toBe("Only the lab's owners can change lab settings");
     expect(friendlyError('Culture not found', 'P0002')).toBe('Culture not found');
   });
+
+  it('turns plan limits into a sentence', () => {
+    expect(friendlyError('limit_reached:strains:25', 'LM001')).toBe(
+      "You've reached your plan's limit for strains (25). Remove one you no longer need, or ask the app's owner about a bigger plan.",
+    );
+    expect(friendlyError('limit_reached:labs_owned:1', 'LM001')).toContain('limit for labs you own (1)');
+  });
 });

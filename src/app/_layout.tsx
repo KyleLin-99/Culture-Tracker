@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from '@/auth/AuthProvider';
+import { AppGate } from '@/ui/AppGate';
 import { Loading } from '@/ui/components';
 import { colors } from '@/ui/theme';
 
@@ -11,7 +12,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <StatusBar style="dark" />
-        <RootStack />
+        <AppGate>
+          <RootStack />
+        </AppGate>
       </AuthProvider>
     </SafeAreaProvider>
   );

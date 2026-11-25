@@ -32,6 +32,11 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** True when the running app is older than the minimum the server asks for. */
+export function needsUpdate(running: string, minimum: string): boolean {
+  return compareVersions(running, minimum) < 0;
+}
+
 /**
  * What is running right now. Every native lookup is guarded: web and Expo Go
  * have no store build number, and expo-updates is inert in development.

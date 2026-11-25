@@ -33,6 +33,8 @@ export type TestUser = { id: string; token: string; client: SupabaseClient };
 export async function adminDb(env: TestEnv): Promise<Client> {
   const db = new Client({ connectionString: env.dbUrl });
   await db.connect();
+  // Test runs make many users; the production cap of 25 is covered in pgTAP.
+  await db.query("update app_settings set value = '100000' where key = 'max_users'");
   return db;
 }
 

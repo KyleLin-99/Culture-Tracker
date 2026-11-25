@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
-import { compareVersions, formatVersion, getVersionInfo } from '../version';
+import { compareVersions, formatVersion, getVersionInfo, needsUpdate } from '../version';
 
 jest.mock('expo-application', () => ({ nativeApplicationVersion: '1.2.3', nativeBuildVersion: '45' }));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '9.9.9' } } }));
@@ -28,5 +28,14 @@ describe('compareVersions', () => {
 describe('getVersionInfo', () => {
   it('reads the native version, build, channel and whether an update is running', () => {
     expect(getVersionInfo()).toEqual({ version: '1.2.3', build: '45', channel: 'staging', isUpdate: true });
+  });
+});
+
+describe('needsUpdate', () => {
+  it('blocks only apps older than the minimum', () => {
+    expect(needsUpdate('1.0.0', '1.1.0')).toBe(true);
+    expect(needsUpdate('1.1.0', '1.1.0')).toBe(false);
+    expect(needsUpdate('2.0.0', '1.9.9')).toBe(false);
+    expect(needsUpdate('1.0.0', '0.0.0')).toBe(false);
   });
 });
